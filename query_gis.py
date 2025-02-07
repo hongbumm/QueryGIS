@@ -9,7 +9,7 @@
         begin                : 2025-01-07
         git sha              : $Format:%H$
         copyright            : (C) 2025 by 3DLabs, Juseong Lee
-        email                : juseonglee99@3dlabs.co.kr
+        email                : juseonglee99@3dlabs.co.kr / ljsgalaxy246@gmail.com
  ***************************************************************************/
 
 /***************************************************************************
