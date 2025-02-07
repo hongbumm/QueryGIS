@@ -114,7 +114,8 @@ class QueryGIS:
             self.ui.btn_ask.setText("Ask")
             self.ui.btn_run.setEnabled(True)
     def process_query(self):
-        self.ui.btn_ask.setEnabled(False)
+        # 무한정 기다리는 이슈. 일단 해제
+        # self.ui.btn_ask.setEnabled(False)
         api_key = self.ui.line_apikey.text().strip()
         project = QgsProject.instance()
         project_info = {"title": project.title(), "fileName": project.fileName(), "layerCount": len(project.mapLayers())}
