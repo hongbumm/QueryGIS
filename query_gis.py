@@ -21,310 +21,169 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread, pyqtSignal
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QDockWidget, QLineEdit
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 from tempfile import gettempdir
 import os
 from qgis.utils import iface
-from qgis.core import QgsApplication, QgsProject, QgsMapLayer
-
-
-from openai import OpenAI  # OpenAI 모듈 추가
-
+from qgis.core import QgsApplication, QgsProject, QgsMapLayer, QgsRasterLayer
+from openai import OpenAI
 from .resources import *
-from .dockwidget import Ui_DockWidget  # 새로 만든 도킹 창 UI
-
+from .dockwidget import Ui_DockWidget
 import os.path
 
-
 class OpenAIWorker(QThread):
-    finished = pyqtSignal(str)  # 응답 완료 시 신호 전달
-    error = pyqtSignal(str)     # 오류 발생 시 신호 전달
-
+    finished = pyqtSignal(str)
+    error = pyqtSignal(str)
     def __init__(self, api_key, user_query):
         super().__init__()
         self.api_key = api_key
         self.user_query = user_query
-
     def run(self):
-
         ASSISTANT_ID = "asst_bkccSq0rhMUkeIHFwParQ1G7"
-
         try:
             client = OpenAI(api_key=self.api_key)
-
-            # Create a thread with a message.
-            thread = client.beta.threads.create(
-                messages=[
-                    {
-                        "role": "user",
-                        # Update this with the query you want to use.
-                        "content": f"{self.user_query}",
-                    }
-                ]
-            )
-
-            # Submit the thread to the assistant (as a new run).
+            thread = client.beta.threads.create(messages=[{"role": "user", "content": f"{self.user_query}"}])
             run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
-
-
             while run.status != "completed":
                 run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
             message_response = client.beta.threads.messages.list(thread_id=thread.id)
             messages = message_response.data
-
             latest_message = messages[0]
-
             response = latest_message.content[0].text.value
-
             if response.startswith("```python"):
-                response = response[len("```python"):].strip()  # ```python 제거
+                response = response[len("```python"):].strip()
             if response.endswith("```"):
                 response = response[:-3].strip()
-
             self.finished.emit(response)
         except Exception as e:
             self.error.emit(str(e))
 
-
 class QueryGIS:
-    """QGIS Plugin Implementation."""
-
     def __init__(self, iface):
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
         self.menu = self.tr(u'&QueryGIS')
-        self.actions = []  # 플러그인의 액션을 저장하는 리스트
+        self.actions = []
         self.dockwidget = None
-
     def tr(self, message):
-        """Get the translation for a string using Qt translation API."""
         return QCoreApplication.translate('QueryGIS', message)
-
-    def add_action(
-        self,
-        icon_path,
-        text,
-        callback,
-        enabled_flag=True,
-        add_to_menu=True,
-        add_to_toolbar=True,
-        status_tip=None,
-        whats_this=None,
-        parent=None):
-        """Add a toolbar icon to the toolbar."""
-
+    def add_action(self, icon_path, text, callback, enabled_flag=True, add_to_menu=True, add_to_toolbar=True, status_tip=None, whats_this=None, parent=None):
         icon = QIcon(icon_path)
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
         action.setEnabled(enabled_flag)
-
         if status_tip is not None:
             action.setStatusTip(status_tip)
-
         if whats_this is not None:
             action.setWhatsThis(whats_this)
-
         if add_to_toolbar:
-            # Adds plugin icon to Plugins toolbar
             self.iface.addToolBarIcon(action)
-
         if add_to_menu:
-            self.iface.addPluginToMenu(
-                self.menu,
-                action)
-
+            self.iface.addPluginToMenu(self.menu, action)
         self.actions.append(action)
-
         return action
-
     def initGui(self):
-        """Create the menu entries and toolbar icons inside the QGIS GUI."""
         icon_path = ':/plugins/query_gis/icon.png'
-        self.add_action(
-            icon_path,
-            text=self.tr(u'QueryGIS'),
-            callback=self.run,
-            parent=self.iface.mainWindow(),
-        )
-
+        self.add_action(icon_path, text=self.tr(u'QueryGIS'), callback=self.run, parent=self.iface.mainWindow())
     def unload(self):
-        """Remove the plugin menu and toolbar icon."""
         if self.dockwidget:
             self.iface.removeDockWidget(self.dockwidget)
         for action in self.actions:
-            self.iface.removePluginMenu(
-                self.tr(u'&QueryGIS'),
-                action)
+            self.iface.removePluginMenu(self.tr(u'&QueryGIS'), action)
             self.iface.removeToolBarIcon(action)
-
     def run(self):
-        """Run method that performs all the real work."""
         if not self.dockwidget:
-            # 도킹 창 초기화
             self.dockwidget = QDockWidget("QueryGIS", self.iface.mainWindow())
             self.dockwidget.setObjectName("QueryGISDockWidget")
             self.ui = Ui_DockWidget()
             self.ui.setupUi(self.dockwidget)
-
-            # API 키 입력란을 비밀번호 모드로 설정
             self.ui.line_apikey.setEchoMode(QLineEdit.Password)
-
-            # Ask 버튼 클릭
             self.ui.btn_ask.clicked.connect(self.process_query)
-
-            # Run 버튼 클릭
             self.ui.btn_run.clicked.connect(self.run_response)
-
-            # 도킹 창을 QGIS에 추가
+            self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
-
-        # 도킹 창 표시
         self.dockwidget.show()
-
+    def toggle_ask_run(self):
+        if self.ui.chk_ask_run.isChecked():
+            self.ui.btn_ask.setText("Ask and Run")
+            self.ui.btn_run.setEnabled(False)
+        else:
+            self.ui.btn_ask.setText("Ask")
+            self.ui.btn_run.setEnabled(True)
     def process_query(self):
-        """Process the query when the 'Ask' button is clicked."""
+        self.ui.btn_ask.setEnabled(False)
         api_key = self.ui.line_apikey.text().strip()
-
-
-        # 현재 프로젝트 / 레이어 정보를 전달
-
         project = QgsProject.instance()
-
-        # 프로젝트 정보
-        project_info = {
-            "title": project.title(),
-            "fileName": project.fileName(),
-            "layerCount": len(project.mapLayers())
-        }
-
-        # 모든 레이어 정보
+        project_info = {"title": project.title(), "fileName": project.fileName(), "layerCount": len(project.mapLayers())}
         layers_info = []
         for layer in project.mapLayers().values():
-            layer_info = {
-                "name": layer.name(),
-                "type": layer.type(),
-                "crs": layer.crs().authid(),
-                "featureCount": layer.featureCount() if layer.type() == QgsMapLayer.VectorLayer else "N/A"
-            }
+            layer_info = {"name": layer.name(), "type": layer.type(), "crs": layer.crs().authid(), "featureCount": layer.featureCount() if layer.type() == QgsMapLayer.VectorLayer else "N/A"}
             layers_info.append(layer_info)
-
-        # 현재 선택된 레이어 정보
         active_layer = iface.activeLayer()
         active_layer_info = None
         if active_layer:
-            active_layer_info = {
-                "name": active_layer.name(),
-                "type": active_layer.type(),
-                "crs": active_layer.crs().authid(),
-                "featureCount": active_layer.featureCount() if active_layer.type() == QgsMapLayer.VectorLayer else "N/A"
-            }
-
-        # 결과 출력
-        print("Project Info:", project_info)
-        print("Layers Info:", layers_info)
-        print("Active Layer Info:", active_layer_info)
-
+            active_layer_info = {"name": active_layer.name(), "type": active_layer.type(), "crs": active_layer.crs().authid(), "featureCount": active_layer.featureCount() if active_layer.type() == QgsMapLayer.VectorLayer else "N/A"}
         user_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게."
-
-        user_query += f"Project Info:, {project_info}\n"
-        user_query += f"Layers Info:, {layers_info}\n"
-        user_query += f"Active Layer Info:, {active_layer_info}\n"
-
-        print(user_query)
-
+        user_query += f" Project Info: {project_info}\n"
+        user_query += f" Layers Info: {layers_info}\n"
+        user_query += f" Active Layer Info: {active_layer_info}\n"
         user_query += "And the User's Request is : "
-
-
         user_query += self.ui.text_query.toPlainText().strip()
-        user_query += '''\n
-        그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내.
-        모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해.
-        그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성할 수 있도록 해줘.
-        제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘.
-        주석은 절대로 달지마.
-        기본적으로 항상 새로운 레이어를 생성하여 작업해줘.
-        레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘.
-        만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘
-        그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마.
-
-        제일 중요한건 코드 외의 어떤 말도 필요없어. 주석 다 삭제해. 설명도 하지마.
-        '''
-
+        user_query += "\n그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. 주석 다 삭제해. 설명도 하지마."
         if not api_key:
             self.ui.text_response.setPlainText("API Key is missing!")
+            self.ui.btn_ask.setEnabled(True)
             return
-
         if not user_query:
             self.ui.text_response.setPlainText("Query is empty!")
+            self.ui.btn_ask.setEnabled(True)
             return
-
-        # 로딩바 상태를 제어하기 위한 변수
         self.loading = True
         self.loading_index = 0
-
-        # QTimer로 로딩 애니메이션 시작
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loading_text)
-        self.timer.start(300)  # 300ms마다 텍스트 업데이트
-
-        # OpenAI API 호출을 위한 스레드 생성 및 시작
+        self.timer.start(300)
         self.worker = OpenAIWorker(api_key, user_query)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
         self.worker.start()
-
     def update_loading_text(self):
-        """Update the loading text in the text_response widget."""
         if not self.loading:
             return
-
-        # 로딩 애니메이션 텍스트
         loading_texts = ["Loading.", "Loading..", "Loading...", "Loading."]
-
-        # 텍스트 업데이트
         self.ui.text_response.setPlainText(loading_texts[self.loading_index])
-
-        # 인덱스 업데이트
         self.loading_index = (self.loading_index + 1) % len(loading_texts)
-
     def handle_response(self, response):
-        """Handle the response from the OpenAIWorker."""
         self.timer.stop()
         self.loading = False
-
-        add_imports = "from qgis.core import *\nfrom qgis.gui import *\nfrom qgis.analysis import *\nfrom qgis.processing import *\nfrom qgis.utils import *\nfrom PyQt5.QtCore import *\nfrom PyQt5.QtGui import *\nimport processing\n" 
+        self.ui.btn_ask.setEnabled(True)
+        add_imports = "from qgis.core import *\nfrom qgis.gui import *\nfrom qgis.analysis import *\nfrom qgis.processing import *\nfrom qgis.utils import *\nfrom PyQt5.QtCore import *\nfrom PyQt5.QtGui import *\nimport processing\n"
         response = add_imports + response
         self.ui.text_response.setPlainText(response)
-
+        if self.ui.chk_ask_run.isChecked():
+            self.run_response()
     def handle_error(self, error_message):
-        """Handle errors from the OpenAIWorker."""
         self.timer.stop()
         self.loading = False
+        self.ui.btn_ask.setEnabled(True)
         self.ui.text_response.setPlainText(f"Error: {error_message}")
-
-
     def run_response(self):
-        """Execute the Python code from the response."""
+        self.ui.btn_run.setEnabled(False)
         response_code = self.ui.text_response.toPlainText().strip()
-
         if not response_code:
             self.ui.status_label.setText("Status: No code to execute.")
             self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
+            self.ui.btn_run.setEnabled(True)
             return
-
         try:
             exec(response_code)
-
-            # Update status label on success
             self.ui.status_label.setText("Status: Code Execution Succeed.")
             self.ui.status_label.setStyleSheet("background-color: #66FF66; color: black;")
-
         except Exception as e:
-            # Update status label on failure
             error_message = f"Something Wrong:\n{str(e)}"
             self.ui.status_label.setText(error_message)
             self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
+        self.ui.btn_run.setEnabled(True)
