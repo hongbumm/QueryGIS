@@ -28,7 +28,7 @@ from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 from tempfile import gettempdir
 import os
 from qgis.utils import iface
-from qgis.core import QgsApplication
+from qgis.core import QgsApplication, QgsProject, QgsMapLayer
 
 
 from openai import OpenAI  # OpenAI 모듈 추가
@@ -188,7 +188,58 @@ class QueryGIS:
     def process_query(self):
         """Process the query when the 'Ask' button is clicked."""
         api_key = self.ui.line_apikey.text().strip()
-        user_query = self.ui.text_query.toPlainText().strip()
+
+
+        # 현재 프로젝트 / 레이어 정보를 전달
+
+        project = QgsProject.instance()
+
+        # 프로젝트 정보
+        project_info = {
+            "title": project.title(),
+            "fileName": project.fileName(),
+            "layerCount": len(project.mapLayers())
+        }
+
+        # 모든 레이어 정보
+        layers_info = []
+        for layer in project.mapLayers().values():
+            layer_info = {
+                "name": layer.name(),
+                "type": layer.type(),
+                "crs": layer.crs().authid(),
+                "featureCount": layer.featureCount() if layer.type() == QgsMapLayer.VectorLayer else "N/A"
+            }
+            layers_info.append(layer_info)
+
+        # 현재 선택된 레이어 정보
+        active_layer = iface.activeLayer()
+        active_layer_info = None
+        if active_layer:
+            active_layer_info = {
+                "name": active_layer.name(),
+                "type": active_layer.type(),
+                "crs": active_layer.crs().authid(),
+                "featureCount": active_layer.featureCount() if active_layer.type() == QgsMapLayer.VectorLayer else "N/A"
+            }
+
+        # 결과 출력
+        print("Project Info:", project_info)
+        print("Layers Info:", layers_info)
+        print("Active Layer Info:", active_layer_info)
+
+        user_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게."
+
+        user_query += f"Project Info:, {project_info}\n"
+        user_query += f"Layers Info:, {layers_info}\n"
+        user_query += f"Active Layer Info:, {active_layer_info}\n"
+
+        print(user_query)
+
+        user_query += "And the User's Request is : "
+
+
+        user_query += self.ui.text_query.toPlainText().strip()
         user_query += '''\n
         그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내.
         모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해.
