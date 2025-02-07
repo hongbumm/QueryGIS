@@ -52,6 +52,13 @@
        </widget>
       </item>
       <item>
+       <widget class="QCheckBox" name="chk_ask_run">
+        <property name="text">
+         <string>Ask and Run</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QLabel" name="label_3">
         <property name="text">
          <string>Response</string>
