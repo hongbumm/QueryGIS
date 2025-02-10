@@ -24,7 +24,7 @@
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread, pyqtSignal
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QDockWidget, QLineEdit
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal
+from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QVariant
 from tempfile import gettempdir
 import os
 from qgis.utils import iface
@@ -118,22 +118,123 @@ class QueryGIS:
         # self.ui.btn_ask.setEnabled(False)
         api_key = self.ui.line_apikey.text().strip()
         project = QgsProject.instance()
-        project_info = {"title": project.title(), "fileName": project.fileName(), "layerCount": len(project.mapLayers())}
+        # 1. Project Info 확장
+        project_info = {
+            "title": project.title(),
+            "fileName": project.fileName(),
+            "layerCount": len(project.mapLayers()),
+            "distanceUnits": project.distanceUnits(),
+            "areaUnits": project.areaUnits(),
+            "homePath": project.homePath(),
+        }
+
+        # 2. Layers Info 확장
         layers_info = []
-        for layer in project.mapLayers().values():
-            layer_info = {"name": layer.name(), "type": layer.type(), "crs": layer.crs().authid(), "featureCount": layer.featureCount() if layer.type() == QgsMapLayer.VectorLayer else "N/A"}
+        for layer_id, layer in project.mapLayers().items():
+            layer_info = {
+                "name": layer.name(),
+                "id": layer_id,
+                "type": layer.type(),
+                "crs": layer.crs().authid(),
+                "featureCount": layer.featureCount() if layer.type() == QgsMapLayer.VectorLayer else "N/A",
+                "provider": layer.dataProvider().name(),
+                "extent": layer.extent().toString(),
+                "opacity": layer.opacity(), # 레이어 투명도
+                "source": layer.source()  # 레이어 데이터 소스 (예: 파일 경로)
+            }
+
+            # 벡터 레이어 정보 추가
+            if layer.type() == QgsMapLayer.VectorLayer:
+                fields_info = []
+                for field in layer.fields():
+                    field_info = {
+                        "name": field.name(),
+                        "type": field.typeName()
+                    }
+                    fields_info.append(field_info)
+                layer_info["fields"] = fields_info
+
+                # 편집 모드 확인
+                layer_info["isEditable"] = layer.isEditable()
+
+                # 선택된 Feature 개수 확인
+                layer_info["selectedFeatureCount"] = len(layer.selectedFeatures())
+
+            # 래스터 레이어 정보 추가
+            elif layer.type() == QgsMapLayer.RasterLayer:
+                rlayer = QgsRasterLayer(layer.source(), layer.name(), layer.providerType())
+                if rlayer.isValid():
+                    layer_info["pixelSizeX"] = rlayer.rasterUnitsPerPixelX()
+                    layer_info["pixelSizeY"] = rlayer.rasterUnitsPerPixelY()
+                    layer_info["width"] = rlayer.width()  # 래스터 가로 픽셀 수
+                    layer_info["height"] = rlayer.height() # 래스터 세로 픽셀 수
+                    layer_info["bandCount"] = rlayer.bandCount() # 래스터 밴드 수
+
             layers_info.append(layer_info)
+
+        # 3. Active Layer Info 확장 (위와 동일한 방식으로 확장)
         active_layer = iface.activeLayer()
         active_layer_info = None
         if active_layer:
-            active_layer_info = {"name": active_layer.name(), "type": active_layer.type(), "crs": active_layer.crs().authid(), "featureCount": active_layer.featureCount() if active_layer.type() == QgsMapLayer.VectorLayer else "N/A"}
-        user_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게."
-        user_query += f" Project Info: {project_info}\n"
-        user_query += f" Layers Info: {layers_info}\n"
-        user_query += f" Active Layer Info: {active_layer_info}\n"
+            active_layer_info = {
+                "name": active_layer.name(),
+                "id": active_layer.id(), # 레이어 ID 추가
+                "type": active_layer.type(),
+                "crs": active_layer.crs().authid(),
+                "featureCount": active_layer.featureCount() if active_layer.type() == QgsMapLayer.VectorLayer else "N/A",
+                "provider": active_layer.dataProvider().name(),
+                "extent": active_layer.extent().toString(),
+                "opacity": active_layer.opacity(),
+                "source": active_layer.source()
+            }
+
+            if active_layer.type() == QgsMapLayer.VectorLayer:
+                fields_info = []
+                for field in active_layer.fields():
+                    field_info = {
+                        "name": field.name(),
+                        "type": field.typeName()
+                    }
+                    fields_info.append(field_info)
+                active_layer_info["fields"] = fields_info
+                active_layer_info["isEditable"] = active_layer.isEditable()
+                active_layer_info["selectedFeatureCount"] = len(active_layer.selectedFeatures())
+
+            elif active_layer.type() == QgsMapLayer.RasterLayer:
+                rlayer = QgsRasterLayer(active_layer.source(), active_layer.name(), active_layer.providerType())
+                if rlayer.isValid():
+                    active_layer_info["pixelSizeX"] = rlayer.rasterUnitsPerPixelX()
+                    active_layer_info["pixelSizeY"] = rlayer.rasterUnitsPerPixelY()
+                    active_layer_info["width"] = rlayer.width()
+                    active_layer_info["height"] = rlayer.height()
+                    active_layer_info["bandCount"] = rlayer.bandCount()
+
+        # 4. User Query 생성
+        user_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게.\n"
+
+        user_query += "======== Project Info ========\n"
+        for key, value in project_info.items():
+            user_query += f"  {key}: {value}\n"
+
+        user_query += "\n======== Layers Info ========\n"
+        for layer_info in layers_info:
+            user_query += f"  Layer Name: {layer_info['name']}\n"
+            for key, value in layer_info.items():
+                if key != "name":
+                    user_query += f"    {key}: {value}\n"
+            user_query += "  ----------------------\n"
+
+        user_query += "\n======== Active Layer Info ========\n"
+        if active_layer_info:
+            for key, value in active_layer_info.items():
+                user_query += f"  {key}: {value}\n"
+        else:
+            user_query += "  No active layer selected.\n"
+
         user_query += "And the User's Request is : "
         user_query += self.ui.text_query.toPlainText().strip()
         user_query += "\n그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. 주석 다 삭제해. 설명도 하지마."
+        print(user_query)
         if not api_key:
             self.ui.text_response.setPlainText("API Key is missing!")
             self.ui.btn_ask.setEnabled(True)
@@ -146,7 +247,7 @@ class QueryGIS:
         self.loading_index = 0
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loading_text)
-        self.timer.start(300)
+        self.timer.start(60)
         self.worker = OpenAIWorker(api_key, user_query)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
