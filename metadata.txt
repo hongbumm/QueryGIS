@@ -15,8 +15,6 @@ about=QueryGIS - Control QGIS with simple commands! - Chat with ChatGPT, and it 
 tracker=http://bugs
 repository=http://repo
 
-required_packages=openai,requests
-
 # End of mandatory metadata
 
 # Recommended items:
@@ -47,4 +45,3 @@ Category of the plugin: Raster, Vector, Database or Web
 
 # If the plugin can run on QGIS Server.
 server=False
-
