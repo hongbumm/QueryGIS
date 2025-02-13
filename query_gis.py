@@ -123,6 +123,7 @@ class QueryGIS:
             "title": project.title(),
             "fileName": project.fileName(),
             "layerCount": len(project.mapLayers()),
+            "crs": project.crs().authid(),
             "distanceUnits": project.distanceUnits(),
             "areaUnits": project.areaUnits(),
             "homePath": project.homePath(),
@@ -247,7 +248,7 @@ class QueryGIS:
         self.loading_index = 0
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loading_text)
-        self.timer.start(60)
+        self.timer.start(300)
         self.worker = OpenAIWorker(api_key, user_query)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
