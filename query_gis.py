@@ -10,7 +10,7 @@
         git sha              : $Format:%H$
         copyright            : (C) 2025 by 3DLabs, Juseong Lee
         email                : juseonglee99@3dlabs.co.kr / ljsgalaxy246@gmail.com
- ***************************************************************************/
+***************************************************************************/
 
 /***************************************************************************
  *                                                                         *
@@ -19,12 +19,11 @@
  *   the Free Software Foundation; either version 2 of the License, or     *
  *   (at your option) any later version.                                   *
  *                                                                         *
- ***************************************************************************/
+***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread, pyqtSignal
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread, pyqtSignal, QEvent, QVariant, QObject
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QDockWidget, QLineEdit
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QVariant
+from qgis.PyQt.QtWidgets import QAction, QDockWidget, QLineEdit, QWidget, QHBoxLayout, QLabel, QPushButton, QApplication
 from tempfile import gettempdir
 import os
 from qgis.utils import iface
@@ -37,16 +36,23 @@ import os.path
 class OpenAIWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
-    def __init__(self, api_key, user_query):
+    def __init__(self, api_key, user_query, assistant_id):
         super().__init__()
         self.api_key = api_key
         self.user_query = user_query
+        self.assistant_id = assistant_id
     def run(self):
-        ASSISTANT_ID = "asst_bkccSq0rhMUkeIHFwParQ1G7"
         try:
             client = OpenAI(api_key=self.api_key)
-            thread = client.beta.threads.create(messages=[{"role": "user", "content": f"{self.user_query}"}])
-            run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=ASSISTANT_ID)
+            final_query = self.user_query
+            if self.assistant_id == "asst_XPKTu0WFqp57sjzhSvRy4hcf":
+                file_path = os.path.join(os.path.dirname(__file__), "success_query_250207_v5.txt")
+                if os.path.exists(file_path):
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        file_contents = f.read()
+                final_query = "These are the Samples for requests and responses.\n" + file_contents + "\n and this is the users query. \n" + self.user_query
+            thread = client.beta.threads.create(messages=[{"role": "user", "content": f"{final_query}"}])
+            run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=self.assistant_id)
             while run.status != "completed":
                 run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
             message_response = client.beta.threads.messages.list(thread_id=thread.id)
@@ -61,13 +67,15 @@ class OpenAIWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-class QueryGIS:
+class QueryGIS(QObject):
     def __init__(self, iface):
+        super().__init__()
         self.iface = iface
         self.plugin_dir = os.path.dirname(__file__)
         self.menu = self.tr(u'&QueryGIS')
         self.actions = []
         self.dockwidget = None
+        self.chat_history = []
     def tr(self, message):
         return QCoreApplication.translate('QueryGIS', message)
     def add_action(self, icon_path, text, callback, enabled_flag=True, add_to_menu=True, add_to_toolbar=True, status_tip=None, whats_this=None, parent=None):
@@ -102,23 +110,74 @@ class QueryGIS:
             self.ui.setupUi(self.dockwidget)
             self.ui.line_apikey.setEchoMode(QLineEdit.Password)
             self.ui.btn_ask.clicked.connect(self.process_query)
-            self.ui.btn_run.clicked.connect(self.run_response)
             self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
+            self.ui.text_query.installEventFilter(self)
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
         self.dockwidget.show()
+    def eventFilter(self, obj, event):
+        if obj == self.ui.text_query and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier:
+                self.process_query()
+                return True
+        return False
     def toggle_ask_run(self):
         if self.ui.chk_ask_run.isChecked():
             self.ui.btn_ask.setText("Ask and Run")
-            self.ui.btn_run.setEnabled(False)
         else:
             self.ui.btn_ask.setText("Ask")
-            self.ui.btn_run.setEnabled(True)
+    def add_chat_message(self, role, message):
+        msg_widget = QWidget()
+        layout = QHBoxLayout(msg_widget)
+        layout.setContentsMargins(10, 5, 10, 5)
+        label = QLabel(message)
+        label.setWordWrap(True)
+        if role == "user":
+            label.setStyleSheet("background-color: #1AC85C; color: white; border: none; border-radius: 10px; padding: 8px; font-family: '맑은 고딕'; font-size: 12px;")
+            layout.addStretch()
+            layout.addWidget(label)
+        else:
+            label.setStyleSheet("background-color: #D3D3D3; color: black; border: none; border-radius: 10px; padding: 8px;")
+            layout.addWidget(label)
+            run_btn = QPushButton("Run")
+            run_btn.setMaximumSize(40, 25)
+            layout.addWidget(run_btn)
+            copy_btn = QPushButton("Copy")
+            copy_btn.setMaximumSize(40, 25)
+            layout.addWidget(copy_btn)
+            layout.addStretch()
+            run_btn.clicked.connect(lambda _, code=message: self.run_message(code))
+            copy_btn.clicked.connect(lambda _, code=message: self.copy_to_clipboard(code))
+        return msg_widget
+    def append_chat_message(self, role, message):
+        self.chat_history.append({"role": role, "content": message})
+        msg_widget = self.add_chat_message(role, message)
+        self.ui.chatLayout.insertWidget(self.ui.chatLayout.count() - 1, msg_widget)
+        self.ui.chatScrollArea.verticalScrollBar().setValue(self.ui.chatScrollArea.verticalScrollBar().maximum())
+    def copy_to_clipboard(self, text):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+    def run_message(self, code):
+        try:
+            exec(code)
+            self.ui.status_label.setText("Status: Code Execution Succeed.")
+            self.ui.status_label.setStyleSheet("background-color: #66FF66; color: black;")
+        except Exception as e:
+            self.ui.status_label.setText("Something Wrong:\n" + str(e))
+            self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
     def process_query(self):
-        # 무한정 기다리는 이슈. 일단 해제
-        # self.ui.btn_ask.setEnabled(False)
         api_key = self.ui.line_apikey.text().strip()
+        user_input = self.ui.text_query.toPlainText().strip()
+        if not api_key:
+            self.ui.status_label.setText("API Key is missing!")
+            self.ui.btn_ask.setEnabled(True)
+            return
+        if not user_input:
+            self.ui.status_label.setText("Query is empty!")
+            self.ui.btn_ask.setEnabled(True)
+            return
+        self.append_chat_message("user", user_input)
+        self.ui.text_query.clear()
         project = QgsProject.instance()
-        # 1. Project Info 확장
         project_info = {
             "title": project.title(),
             "fileName": project.fileName(),
@@ -128,8 +187,6 @@ class QueryGIS:
             "areaUnits": project.areaUnits(),
             "homePath": project.homePath(),
         }
-
-        # 2. Layers Info 확장
         layers_info = []
         for layer_id, layer in project.mapLayers().items():
             layer_info = {
@@ -140,46 +197,31 @@ class QueryGIS:
                 "featureCount": layer.featureCount() if layer.type() == QgsMapLayer.VectorLayer else "N/A",
                 "provider": layer.dataProvider().name(),
                 "extent": layer.extent().toString(),
-                "opacity": layer.opacity(), # 레이어 투명도
-                "source": layer.source()  # 레이어 데이터 소스 (예: 파일 경로)
+                "opacity": layer.opacity(),
+                "source": layer.source()
             }
-
-            # 벡터 레이어 정보 추가
             if layer.type() == QgsMapLayer.VectorLayer:
                 fields_info = []
                 for field in layer.fields():
-                    field_info = {
-                        "name": field.name(),
-                        "type": field.typeName()
-                    }
-                    fields_info.append(field_info)
+                    fields_info.append({"name": field.name(), "type": field.typeName()})
                 layer_info["fields"] = fields_info
-
-                # 편집 모드 확인
                 layer_info["isEditable"] = layer.isEditable()
-
-                # 선택된 Feature 개수 확인
                 layer_info["selectedFeatureCount"] = len(layer.selectedFeatures())
-
-            # 래스터 레이어 정보 추가
             elif layer.type() == QgsMapLayer.RasterLayer:
                 rlayer = QgsRasterLayer(layer.source(), layer.name(), layer.providerType())
                 if rlayer.isValid():
                     layer_info["pixelSizeX"] = rlayer.rasterUnitsPerPixelX()
                     layer_info["pixelSizeY"] = rlayer.rasterUnitsPerPixelY()
-                    layer_info["width"] = rlayer.width()  # 래스터 가로 픽셀 수
-                    layer_info["height"] = rlayer.height() # 래스터 세로 픽셀 수
-                    layer_info["bandCount"] = rlayer.bandCount() # 래스터 밴드 수
-
+                    layer_info["width"] = rlayer.width()
+                    layer_info["height"] = rlayer.height()
+                    layer_info["bandCount"] = rlayer.bandCount()
             layers_info.append(layer_info)
-
-        # 3. Active Layer Info 확장 (위와 동일한 방식으로 확장)
         active_layer = iface.activeLayer()
         active_layer_info = None
         if active_layer:
             active_layer_info = {
                 "name": active_layer.name(),
-                "id": active_layer.id(), # 레이어 ID 추가
+                "id": active_layer.id(),
                 "type": active_layer.type(),
                 "crs": active_layer.crs().authid(),
                 "featureCount": active_layer.featureCount() if active_layer.type() == QgsMapLayer.VectorLayer else "N/A",
@@ -188,19 +230,13 @@ class QueryGIS:
                 "opacity": active_layer.opacity(),
                 "source": active_layer.source()
             }
-
             if active_layer.type() == QgsMapLayer.VectorLayer:
                 fields_info = []
                 for field in active_layer.fields():
-                    field_info = {
-                        "name": field.name(),
-                        "type": field.typeName()
-                    }
-                    fields_info.append(field_info)
+                    fields_info.append({"name": field.name(), "type": field.typeName()})
                 active_layer_info["fields"] = fields_info
                 active_layer_info["isEditable"] = active_layer.isEditable()
                 active_layer_info["selectedFeatureCount"] = len(active_layer.selectedFeatures())
-
             elif active_layer.type() == QgsMapLayer.RasterLayer:
                 rlayer = QgsRasterLayer(active_layer.source(), active_layer.name(), active_layer.providerType())
                 if rlayer.isValid():
@@ -209,47 +245,36 @@ class QueryGIS:
                     active_layer_info["width"] = rlayer.width()
                     active_layer_info["height"] = rlayer.height()
                     active_layer_info["bandCount"] = rlayer.bandCount()
-
-        # 4. User Query 생성
-        user_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게.\n"
-
-        user_query += "======== Project Info ========\n"
+        full_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게.\n"
+        full_query += "======== Project Info ========\n"
         for key, value in project_info.items():
-            user_query += f"  {key}: {value}\n"
-
-        user_query += "\n======== Layers Info ========\n"
+            full_query += f"  {key}: {value}\n"
+        full_query += "\n======== Layers Info ========\n"
         for layer_info in layers_info:
-            user_query += f"  Layer Name: {layer_info['name']}\n"
+            full_query += f"  Layer Name: {layer_info['name']}\n"
             for key, value in layer_info.items():
                 if key != "name":
-                    user_query += f"    {key}: {value}\n"
-            user_query += "  ----------------------\n"
-
-        user_query += "\n======== Active Layer Info ========\n"
+                    full_query += f"    {key}: {value}\n"
+            full_query += "  ----------------------\n"
+        full_query += "\n======== Active Layer Info ========\n"
         if active_layer_info:
             for key, value in active_layer_info.items():
-                user_query += f"  {key}: {value}\n"
+                full_query += f"  {key}: {value}\n"
         else:
-            user_query += "  No active layer selected.\n"
-
-        user_query += "And the User's Request is : "
-        user_query += self.ui.text_query.toPlainText().strip()
-        user_query += "\n그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. 주석 다 삭제해. 설명도 하지마."
-        print(user_query)
-        if not api_key:
-            self.ui.text_response.setPlainText("API Key is missing!")
-            self.ui.btn_ask.setEnabled(True)
-            return
-        if not user_query:
-            self.ui.text_response.setPlainText("Query is empty!")
-            self.ui.btn_ask.setEnabled(True)
-            return
+            full_query += "  No active layer selected.\n"
+        full_query += "And the User's Request is : " + user_input + "\n"
+        full_query += "그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. "
+        print(full_query)
         self.loading = True
         self.loading_index = 0
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loading_text)
         self.timer.start(300)
-        self.worker = OpenAIWorker(api_key, user_query)
+        if self.ui.chk_reason.isChecked():
+            assistant_id = "asst_XPKTu0WFqp57sjzhSvRy4hcf"
+        else:
+            assistant_id = "asst_bkccSq0rhMUkeIHFwParQ1G7"
+        self.worker = OpenAIWorker(api_key, full_query, assistant_id)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
         self.worker.start()
@@ -257,36 +282,39 @@ class QueryGIS:
         if not self.loading:
             return
         loading_texts = ["Loading.", "Loading..", "Loading...", "Loading."]
-        self.ui.text_response.setPlainText(loading_texts[self.loading_index])
+        self.ui.status_label.setText(loading_texts[self.loading_index])
         self.loading_index = (self.loading_index + 1) % len(loading_texts)
     def handle_response(self, response):
         self.timer.stop()
         self.loading = False
         self.ui.btn_ask.setEnabled(True)
-        add_imports = "from qgis.core import *\nfrom qgis.gui import *\nfrom qgis.analysis import *\nfrom qgis.processing import *\nfrom qgis.utils import *\nfrom PyQt5.QtCore import *\nfrom PyQt5.QtGui import *\nimport processing\n"
+        add_imports = ("from qgis.core import *\nfrom qgis.gui import *\nfrom qgis.analysis import *\n"
+                       "from qgis.processing import *\nfrom qgis.utils import *\nfrom PyQt5.QtCore import *\n"
+                       "from PyQt5.QtGui import *\nimport processing\n")
         response = add_imports + response
-        self.ui.text_response.setPlainText(response)
+        self.append_chat_message("assistant", response)
         if self.ui.chk_ask_run.isChecked():
-            self.run_response()
+            self.run_message(response)
     def handle_error(self, error_message):
         self.timer.stop()
         self.loading = False
-        self.ui.btn_ask.setEnabled(True)
-        self.ui.text_response.setPlainText(f"Error: {error_message}")
+        self.ui.status_label.setText(f"Error: {error_message}")
     def run_response(self):
-        self.ui.btn_run.setEnabled(False)
-        response_code = self.ui.text_response.toPlainText().strip()
-        if not response_code:
+        if not self.chat_history:
             self.ui.status_label.setText("Status: No code to execute.")
             self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
-            self.ui.btn_run.setEnabled(True)
             return
+        last_msg = self.chat_history[-1]
+        if last_msg["role"] != "assistant":
+            self.ui.status_label.setText("Status: Last message is not code.")
+            self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
+            return
+        self.run_message(last_msg["content"])
+    def run_message(self, code):
         try:
-            exec(response_code)
+            exec(code)
             self.ui.status_label.setText("Status: Code Execution Succeed.")
             self.ui.status_label.setStyleSheet("background-color: #66FF66; color: black;")
         except Exception as e:
-            error_message = f"Something Wrong:\n{str(e)}"
-            self.ui.status_label.setText(error_message)
+            self.ui.status_label.setText("Something Wrong:\n" + str(e))
             self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
-        self.ui.btn_run.setEnabled(True)
