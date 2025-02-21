@@ -6,22 +6,66 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>773</width>
-    <height>800</height>
+    <width>473</width>
+    <height>1110</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>QueryGIS</string>
   </property>
   <widget class="QWidget" name="dockWidgetContents">
+   <property name="styleSheet">
+    <string notr="true">background-color: rgb(255, 255, 255);</string>
+   </property>
    <layout class="QVBoxLayout" name="mainLayout">
-    <property name="sizeConstraint">
-     <enum>QLayout::SetDefaultConstraint</enum>
-    </property>
+    <!-- Header -->
+    <item>
+     <layout class="QVBoxLayout" name="headerLayout">
+      <item alignment="Qt::AlignHCenter">
+       <widget class="QLabel" name="icon_img">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>50</horstretch>
+          <verstretch>50</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>50</width>
+          <height>50</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border-image: url(:/plugins/query_gis/icon.png);</string>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item alignment="Qt::AlignHCenter">
+       <widget class="QLabel" name="label_title">
+        <property name="font">
+         <font>
+          <family>Arial Narrow</family>
+          <pointsize>12</pointsize>
+         </font>
+        </property>
+        <property name="text">
+         <string>QueryGIS</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <!-- API Key -->
     <item>
      <layout class="QHBoxLayout" name="apiLayout">
       <item>
-       <widget class="QLabel" name="label_2">
+       <widget class="QLabel" name="label_api">
         <property name="text">
          <string>API KEY</string>
         </property>
@@ -32,25 +76,105 @@
       </item>
      </layout>
     </item>
+    <!-- Chat Area -->
     <item>
-     <layout class="QVBoxLayout" name="queryLayout">
+     <widget class="QScrollArea" name="chatScrollArea">
+      <property name="widgetResizable">
+       <bool>true</bool>
+      </property>
+      <!-- Custom Scrollbar Style: only the scrollbar with rounded grey handle -->
+      <property name="styleSheet">
+       <string notr="true">
+QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 10px;
+    margin: 0px;
+}
+QScrollBar::handle:vertical {
+    background: #A9A9A9;
+    min-height: 20px;
+    border-radius: 5px;
+}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    background: none;
+    height: 0px;
+}
+       </string>
+      </property>
+      <widget class="QWidget" name="chatWidget">
+       <property name="geometry">
+        <rect>
+         <x>0</x>
+         <y>0</y>
+         <width>449</width>
+         <height>719</height>
+        </rect>
+       </property>
+       <layout class="QVBoxLayout" name="chatLayout">
+        <item>
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+    <!-- Input Area -->
+    <item>
+     <layout class="QHBoxLayout" name="inputLayout">
       <item>
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Query</string>
+       <widget class="QTextEdit" name="text_query">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>150</height>
+         </size>
+        </property>
+        <property name="font">
+         <font>
+          <family>맑은 고딕</family>
+          <pointsize>10</pointsize>
+         </font>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">border-radius: 7px; border: 2px solid #D9D9D9; padding: 5px;</string>
+        </property>
+        <property name="acceptRichText">
+         <bool>false</bool>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QTextEdit" name="text_query"/>
-      </item>
-      <item>
        <widget class="QPushButton" name="btn_ask">
+        <property name="styleSheet">
+         <string notr="true">border-color: rgb(213, 213, 213);</string>
+        </property>
         <property name="text">
          <string>Ask</string>
         </property>
        </widget>
       </item>
+     </layout>
+    </item>
+    <!-- Options Area (Run button removed) -->
+    <item>
+     <layout class="QHBoxLayout" name="optionsLayout">
       <item>
        <widget class="QCheckBox" name="chk_ask_run">
         <property name="text">
@@ -59,37 +183,30 @@
        </widget>
       </item>
       <item>
-       <widget class="QLabel" name="label_3">
+       <widget class="QCheckBox" name="chk_reason">
         <property name="text">
-         <string>Response</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QTextEdit" name="text_response"/>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btn_run">
-        <property name="text">
-         <string>Run</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="status_label">
-        <property name="text">
-         <string>Status: Waiting for your next command.</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
+         <string>Reasoning (Better, but Slower)</string>
         </property>
        </widget>
       </item>
      </layout>
     </item>
+    <!-- Status Area -->
+    <item>
+     <widget class="QLabel" name="status_label">
+      <property name="text">
+       <string>Status: Waiting for your next command.</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
    </layout>
   </widget>
  </widget>
- <resources/>
+ <resources>
+  <include location="resources.qrc"/>
+ </resources>
  <connections/>
 </ui>
