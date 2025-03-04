@@ -45,12 +45,13 @@ class OpenAIWorker(QThread):
         try:
             client = OpenAI(api_key=self.api_key)
             final_query = self.user_query
-            if self.assistant_id == "asst_XPKTu0WFqp57sjzhSvRy4hcf":
-                file_path = os.path.join(os.path.dirname(__file__), "success_query_250207_v5.txt")
-                if os.path.exists(file_path):
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        file_contents = f.read()
-                final_query = "These are the Samples for requests and responses.\n" + file_contents + "\n and this is the users query. \n" + self.user_query
+            # 단순무식한 방법으로 파일을 읽어서 쿼리를 대체하는 방법(expired)
+            # if self.assistant_id == "asst_XPKTu0WFqp57sjzhSvRy4hcf":
+            #     file_path = os.path.join(os.path.dirname(__file__), "success_query_250207_v5.txt")
+            #     if os.path.exists(file_path):
+            #         with open(file_path, "r", encoding="utf-8") as f:
+            #             file_contents = f.read()
+            #     final_query = "These are the Samples for requests and responses.\n" + file_contents + "\n and this is the users query. \n" + self.user_query
             thread = client.beta.threads.create(messages=[{"role": "user", "content": f"{final_query}"}])
             run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=self.assistant_id)
             while run.status != "completed":
@@ -76,6 +77,10 @@ class QueryGIS(QObject):
         self.actions = []
         self.dockwidget = None
         self.chat_history = []
+        # 초기 상태 색상 정의
+        self.default_status_color = "#F0F0F0"  # 기본 회색
+        self.success_status_color = "#66FF66"  # 성공 시 초록색
+        self.error_status_color = "#FF3333"    # 오류 시 빨간색
     def tr(self, message):
         return QCoreApplication.translate('QueryGIS', message)
     def add_action(self, icon_path, text, callback, enabled_flag=True, add_to_menu=True, add_to_toolbar=True, status_tip=None, whats_this=None, parent=None):
@@ -112,6 +117,8 @@ class QueryGIS(QObject):
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
             self.ui.text_query.installEventFilter(self)
+            # 초기 상태 스타일 설정
+            self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
         self.dockwidget.show()
     def eventFilter(self, obj, event):
@@ -152,7 +159,16 @@ class QueryGIS(QObject):
         self.chat_history.append({"role": role, "content": message})
         msg_widget = self.add_chat_message(role, message)
         self.ui.chatLayout.insertWidget(self.ui.chatLayout.count() - 1, msg_widget)
-        self.ui.chatScrollArea.verticalScrollBar().setValue(self.ui.chatScrollArea.verticalScrollBar().maximum())
+        # self.ui.chatScrollArea.verticalScrollBar().setValue(self.ui.chatScrollArea.verticalScrollBar().maximum())
+        
+        # 사용자 메시지가 추가될 때 상태 색상을 기본으로 초기화
+        if role == "user":
+            self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
+        QTimer.singleShot(10, self.scroll_to_bottom)
+
+    def scroll_to_bottom(self):
+        scrollbar = self.ui.chatScrollArea.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
     def copy_to_clipboard(self, text):
         clipboard = QApplication.clipboard()
         clipboard.setText(text)
@@ -160,19 +176,25 @@ class QueryGIS(QObject):
         try:
             exec(code)
             self.ui.status_label.setText("Status: Code Execution Succeed.")
-            self.ui.status_label.setStyleSheet("background-color: #66FF66; color: black;")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
         except Exception as e:
             self.ui.status_label.setText("Something Wrong:\n" + str(e))
-            self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
     def process_query(self):
+        # 새로운 쿼리가 시작될 때 상태 색상을 기본으로 초기화
+        self.ui.status_label.setText("Processing query...")
+        self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
+        
         api_key = self.ui.line_apikey.text().strip()
         user_input = self.ui.text_query.toPlainText().strip()
         if not api_key:
             self.ui.status_label.setText("API Key is missing!")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             self.ui.btn_ask.setEnabled(True)
             return
         if not user_input:
             self.ui.status_label.setText("Query is empty!")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             self.ui.btn_ask.setEnabled(True)
             return
         self.append_chat_message("user", user_input)
@@ -245,7 +267,27 @@ class QueryGIS(QObject):
                     active_layer_info["width"] = rlayer.width()
                     active_layer_info["height"] = rlayer.height()
                     active_layer_info["bandCount"] = rlayer.bandCount()
-        full_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어에 대한 정보를 먼저 알려줄게.\n"
+        # 현재 맵 캔버스의 확장 영역 가져오기
+        map_canvas = iface.mapCanvas()
+        visible_extent = map_canvas.extent()
+
+        # 현재 보고 있는 영역 정보
+        current_view_info = {
+            "xMin": visible_extent.xMinimum(),
+            "yMin": visible_extent.yMinimum(),
+            "xMax": visible_extent.xMaximum(),
+            "yMax": visible_extent.yMaximum(),
+            "width": visible_extent.width(),
+            "height": visible_extent.height(),
+            "center": {
+                "x": visible_extent.center().x(),
+                "y": visible_extent.center().y()
+            },
+            "scale": map_canvas.scale(),
+            "rotation": map_canvas.rotation()
+        }
+
+        full_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어, 현재 보고있는 영역역에 대한 정보를 먼저 알려줄게.\n"
         full_query += "======== Project Info ========\n"
         for key, value in project_info.items():
             full_query += f"  {key}: {value}\n"
@@ -262,6 +304,9 @@ class QueryGIS(QObject):
                 full_query += f"  {key}: {value}\n"
         else:
             full_query += "  No active layer selected.\n"
+        full_query += "\n======== Current View Info ========\n"
+        for key, value in current_view_info.items():
+            full_query += f"  {key}: {value}\n"
         full_query += "And the User's Request is : " + user_input + "\n"
         full_query += "그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. "
         print(full_query)
@@ -283,11 +328,16 @@ class QueryGIS(QObject):
             return
         loading_texts = ["Loading.", "Loading..", "Loading...", "Loading."]
         self.ui.status_label.setText(loading_texts[self.loading_index])
+        # 로딩 중에는 기본 색상 유지
+        self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
         self.loading_index = (self.loading_index + 1) % len(loading_texts)
     def handle_response(self, response):
         self.timer.stop()
         self.loading = False
         self.ui.btn_ask.setEnabled(True)
+        # 응답 처리가 완료되면 기본 상태로 복귀
+        self.ui.status_label.setText("Response received.")
+        self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
         add_imports = ("from qgis.core import *\nfrom qgis.gui import *\nfrom qgis.analysis import *\n"
                        "from qgis.processing import *\nfrom qgis.utils import *\nfrom PyQt5.QtCore import *\n"
                        "from PyQt5.QtGui import *\nimport processing\n")
@@ -298,23 +348,17 @@ class QueryGIS(QObject):
     def handle_error(self, error_message):
         self.timer.stop()
         self.loading = False
+        # 오류 발생 시 빨간색으로 변경
         self.ui.status_label.setText(f"Error: {error_message}")
+        self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
     def run_response(self):
         if not self.chat_history:
             self.ui.status_label.setText("Status: No code to execute.")
-            self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             return
         last_msg = self.chat_history[-1]
         if last_msg["role"] != "assistant":
             self.ui.status_label.setText("Status: Last message is not code.")
-            self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             return
         self.run_message(last_msg["content"])
-    def run_message(self, code):
-        try:
-            exec(code)
-            self.ui.status_label.setText("Status: Code Execution Succeed.")
-            self.ui.status_label.setStyleSheet("background-color: #66FF66; color: black;")
-        except Exception as e:
-            self.ui.status_label.setText("Something Wrong:\n" + str(e))
-            self.ui.status_label.setStyleSheet("background-color: #FF3333; color: white;")
