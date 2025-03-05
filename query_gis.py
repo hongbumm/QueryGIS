@@ -23,7 +23,7 @@
 """
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread, pyqtSignal, QEvent, QVariant, QObject
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction, QDockWidget, QLineEdit, QWidget, QHBoxLayout, QLabel, QPushButton, QApplication
+from qgis.PyQt.QtWidgets import QAction, QDockWidget, QLineEdit, QWidget, QHBoxLayout, QLabel, QPushButton, QApplication, QTextEdit
 from tempfile import gettempdir
 import os
 from qgis.utils import iface
@@ -32,6 +32,8 @@ from openai import OpenAI
 from .resources import *
 from .dockwidget import Ui_DockWidget
 import os.path
+import sys
+import io
 
 class OpenAIWorker(QThread):
     finished = pyqtSignal(str)
@@ -45,13 +47,7 @@ class OpenAIWorker(QThread):
         try:
             client = OpenAI(api_key=self.api_key)
             final_query = self.user_query
-            # 단순무식한 방법으로 파일을 읽어서 쿼리를 대체하는 방법(expired)
-            # if self.assistant_id == "asst_XPKTu0WFqp57sjzhSvRy4hcf":
-            #     file_path = os.path.join(os.path.dirname(__file__), "success_query_250207_v5.txt")
-            #     if os.path.exists(file_path):
-            #         with open(file_path, "r", encoding="utf-8") as f:
-            #             file_contents = f.read()
-            #     final_query = "These are the Samples for requests and responses.\n" + file_contents + "\n and this is the users query. \n" + self.user_query
+
             thread = client.beta.threads.create(messages=[{"role": "user", "content": f"{final_query}"}])
             run = client.beta.threads.runs.create(thread_id=thread.id, assistant_id=self.assistant_id)
             while run.status != "completed":
@@ -75,12 +71,12 @@ class QueryGIS(QObject):
         self.plugin_dir = os.path.dirname(__file__)
         self.menu = self.tr(u'&QueryGIS')
         self.actions = []
-        self.dockwidget = None
+        self.dockwidget = None  # None으로 초기화
         self.chat_history = []
-        # 초기 상태 색상 정의
-        self.default_status_color = "#F0F0F0"  # 기본 회색
-        self.success_status_color = "#66FF66"  # 성공 시 초록색
-        self.error_status_color = "#FF3333"    # 오류 시 빨간색
+        self.default_status_color = "#F0F0F0"
+        self.success_status_color = "#66FF66"
+        self.error_status_color = "#FF3333"
+
     def tr(self, message):
         return QCoreApplication.translate('QueryGIS', message)
     def add_action(self, icon_path, text, callback, enabled_flag=True, add_to_menu=True, add_to_toolbar=True, status_tip=None, whats_this=None, parent=None):
@@ -110,16 +106,21 @@ class QueryGIS(QObject):
     def run(self):
         if not self.dockwidget:
             self.dockwidget = QDockWidget("QueryGIS", self.iface.mainWindow())
+            self.dockwidget.setAttribute(Qt.WA_DeleteOnClose, True)
             self.dockwidget.setObjectName("QueryGISDockWidget")
+            # 삭제 시 self.dockwidget을 None으로 갱신
+            self.dockwidget.destroyed.connect(lambda: setattr(self, 'dockwidget', None))
             self.ui = Ui_DockWidget()
             self.ui.setupUi(self.dockwidget)
             self.ui.line_apikey.setEchoMode(QLineEdit.Password)
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
             self.ui.text_query.installEventFilter(self)
-            # 초기 상태 스타일 설정
             self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
+            self.ui.chk_ask_run.setChecked(True)
+            self.ui.chk_reason.setChecked(True)
+            self.ui.chk_rag.setChecked(False)
         self.dockwidget.show()
     def eventFilter(self, obj, event):
         if obj == self.ui.text_query and event.type() == QEvent.KeyPress:
@@ -129,22 +130,65 @@ class QueryGIS(QObject):
         return False
     def toggle_ask_run(self):
         if self.ui.chk_ask_run.isChecked():
-            self.ui.btn_ask.setText("Ask and Run")
+            self.ui.btn_ask.setText("Ask and Run\n(Ctrl+Enter)")
         else:
-            self.ui.btn_ask.setText("Ask")
+            self.ui.btn_ask.setText("Ask\n(Ctrl+Enter)")
     def add_chat_message(self, role, message):
         msg_widget = QWidget()
         layout = QHBoxLayout(msg_widget)
         layout.setContentsMargins(10, 5, 10, 5)
-        label = QLabel(message)
-        label.setWordWrap(True)
+        
         if role == "user":
+            # 사용자 메시지는 QLabel 유지, 드래그 가능하게 설정
+            label = QLabel(message)
+            label.setWordWrap(True)
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)  # 텍스트 드래그 가능
             label.setStyleSheet("background-color: #1AC85C; color: white; border: none; border-radius: 10px; padding: 8px; font-family: '맑은 고딕'; font-size: 12px;")
             layout.addStretch()
             layout.addWidget(label)
-        else:
-            label.setStyleSheet("background-color: #D3D3D3; color: black; border: none; border-radius: 10px; padding: 8px;")
+        elif role == "assistant-print":
+            # 봇 메시지는 QLabel 유지, 드래그 가능하게 설정
+            label = QLabel(message)
+            label.setWordWrap(True)
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            label.setStyleSheet("background-color: #D9D9D9; color: black; border: none; border-radius: 10px; padding: 8px;")
+            
             layout.addWidget(label)
+            copy_btn = QPushButton("Copy")
+            copy_btn.setMaximumSize(40, 25)
+            copy_btn.clicked.connect(lambda _, edit=label: self.copy_to_clipboard(edit.text()))
+            layout.addWidget(copy_btn)
+            layout.addStretch()
+        else:
+            # 봇 메시지는 QTextEdit으로 변경하여 수정 가능하게 설정
+            text_edit = QTextEdit()
+            text_edit.setPlainText(message)  # 일반 텍스트로 설정
+            text_edit.setReadOnly(False)  # 수정 가능하게 설정
+            
+            # 문서 크기에 따라 자동으로 확장되도록 설정
+            text_edit.document().documentLayout().documentSizeChanged.connect(
+                lambda size: text_edit.setMinimumHeight(int(size.height()) + 20)
+            )
+            
+            # 초기 높이 설정
+            text_edit.setMinimumHeight(int(text_edit.document().size().height()) + 20)
+            
+            # 스타일 설정
+            text_edit.setStyleSheet("""
+                QTextEdit {
+                    background-color: #D9D9D9; 
+                    color: black; 
+                    border: none; 
+                    border-radius: 10px; 
+                    padding: 8px;
+                }
+            """)
+            
+            # 스크롤바 비활성화
+            text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            
+            layout.addWidget(text_edit)
             run_btn = QPushButton("Run")
             run_btn.setMaximumSize(40, 25)
             layout.addWidget(run_btn)
@@ -152,8 +196,11 @@ class QueryGIS(QObject):
             copy_btn.setMaximumSize(40, 25)
             layout.addWidget(copy_btn)
             layout.addStretch()
-            run_btn.clicked.connect(lambda _, code=message: self.run_message(code))
-            copy_btn.clicked.connect(lambda _, code=message: self.copy_to_clipboard(code))
+            
+            # 버튼 이벤트 연결 (텍스트 에디트의 현재 내용을 가져오도록 수정)
+            run_btn.clicked.connect(lambda _, edit=text_edit: self.run_message(edit.toPlainText()))
+            copy_btn.clicked.connect(lambda _, edit=text_edit: self.copy_to_clipboard(edit.toPlainText()))
+        
         return msg_widget
     def append_chat_message(self, role, message):
         self.chat_history.append({"role": role, "content": message})
@@ -174,9 +221,15 @@ class QueryGIS(QObject):
         clipboard.setText(text)
     def run_message(self, code):
         try:
+            old_stdout = sys.stdout
+            sys.stdout = io.StringIO()
             exec(code)
+            output = sys.stdout.getvalue().strip()
+            sys.stdout = old_stdout
             self.ui.status_label.setText("Status: Code Execution Succeed.")
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
+            if output:
+                self.append_chat_message("assistant-print", output)
         except Exception as e:
             self.ui.status_label.setText("Something Wrong:\n" + str(e))
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
@@ -287,7 +340,7 @@ class QueryGIS(QObject):
             "rotation": map_canvas.rotation()
         }
 
-        full_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어, 현재 보고있는 영역역에 대한 정보를 먼저 알려줄게.\n"
+        full_query = "현재 프로젝트, 프로젝트 내의 모든 레이어, 현재 선택된 레이어, 현재 보고있는 영역에 대한 정보를 먼저 알려줄게.\n"
         full_query += "======== Project Info ========\n"
         for key, value in project_info.items():
             full_query += f"  {key}: {value}\n"
@@ -308,17 +361,28 @@ class QueryGIS(QObject):
         for key, value in current_view_info.items():
             full_query += f"  {key}: {value}\n"
         full_query += "And the User's Request is : " + user_input + "\n"
-        full_query += "그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. "
-        print(full_query)
+        full_query += "그리고, 항상 모든 명령에 '이 레이어' 나 '이 shp 파일' 처럼 이름을 명명하지 않는다면, activeLayer() 함수를 통해서 사용자의 말을 알아내. 모든 과정에서 새롭게 생성되는 모든 shp 파일 및 레이어는 사용자가 명명하지 않는 이상 모두 temp에 저장해. 그리고 코드를 작성할 때는 항상 견고하지만 이해하기 쉽게 작성하고, 가장 간단하게 목표를 이룰 수 있도록 작성해. 제일 중요한건, 각 코드에서 필요한 객체를 import 해야 한다면, 꼭 import 를 명시해줘. 주석은 절대로 달지마. 기본적으로 항상 새로운 레이어를 생성하여 작업해줘. 레이어를 합성하기 위해 'gdal:buildvirtualraster' 기능을 사용할 때는, 꼭!!!! 'PROJ_DIFFERENCE': True 코드를 써줘. 만약 래스터 계산을 한다고 할 때, 'native:rastercalculator'를 사용하지말고 'native:rastercalc' 이 기능을 꼭 써서 작성해줘 그리고 from qgis.core import *,from qgis.gui import *, from qgis.analysis import *, from qgis.processing import *, from qgis.utils import *,from PyQt5.QtCore import *, from PyQt5.QtGui import *,import processing 이 import 문들은 이미 입력되었으니까 쓰지마. 제일 중요한건 코드 외의 어떤 말도 필요없어. File Search 기능 사용 가능할 떄 최선을 다해서 사용해."
+        # print(full_query)
         self.loading = True
         self.loading_index = 0
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_loading_text)
         self.timer.start(300)
+        print(f"chk_reason checked : {self.ui.chk_reason.isChecked()}")
+        print(f"chk_rag checked : {self.ui.chk_rag.isChecked()}")
         if self.ui.chk_reason.isChecked():
-            assistant_id = "asst_XPKTu0WFqp57sjzhSvRy4hcf"
+            assistant_id = "asst_lBgX9ATTPMf7EezudLcMKi3j"
+            print("Reasoning On")
+            if self.ui.chk_rag.isChecked():
+                assistant_id = "asst_XPKTu0WFqp57sjzhSvRy4hcf"
+                print("RAG on")
         else:
-            assistant_id = "asst_bkccSq0rhMUkeIHFwParQ1G7"
+            assistant_id = "asst_PVAKCFkZJErndnUvjXFwxATK"
+            print("Reasoning Off")
+            if self.ui.chk_rag.isChecked():
+                assistant_id = "asst_bkccSq0rhMUkeIHFwParQ1G7"
+                print("RAG on")
+        print("Assistant ID: ", assistant_id)
         self.worker = OpenAIWorker(api_key, full_query, assistant_id)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)

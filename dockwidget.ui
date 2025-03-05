@@ -18,7 +18,6 @@
     <string notr="true">background-color: rgb(255, 255, 255);</string>
    </property>
    <layout class="QVBoxLayout" name="mainLayout">
-    <!-- Header -->
     <item>
      <layout class="QVBoxLayout" name="headerLayout">
       <item alignment="Qt::AlignHCenter">
@@ -61,11 +60,17 @@
       </item>
      </layout>
     </item>
-    <!-- API Key -->
     <item>
      <layout class="QHBoxLayout" name="apiLayout">
       <item>
        <widget class="QLabel" name="label_api">
+        <property name="font">
+         <font>
+          <family>Arial Narrow</family>
+          <weight>75</weight>
+          <bold>true</bold>
+         </font>
+        </property>
         <property name="text">
          <string>API KEY</string>
         </property>
@@ -76,13 +81,8 @@
       </item>
      </layout>
     </item>
-    <!-- Chat Area -->
     <item>
      <widget class="QScrollArea" name="chatScrollArea">
-      <property name="widgetResizable">
-       <bool>true</bool>
-      </property>
-      <!-- Custom Scrollbar Style: only the scrollbar with rounded grey handle -->
       <property name="styleSheet">
        <string notr="true">
 QScrollBar:vertical {
@@ -102,13 +102,16 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 }
        </string>
       </property>
+      <property name="widgetResizable">
+       <bool>true</bool>
+      </property>
       <widget class="QWidget" name="chatWidget">
        <property name="geometry">
         <rect>
          <x>0</x>
          <y>0</y>
          <width>449</width>
-         <height>719</height>
+         <height>676</height>
         </rect>
        </property>
        <layout class="QVBoxLayout" name="chatLayout">
@@ -129,7 +132,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
       </widget>
      </widget>
     </item>
-    <!-- Input Area -->
     <item>
      <layout class="QHBoxLayout" name="inputLayout">
       <item>
@@ -162,21 +164,39 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
       </item>
       <item>
        <widget class="QPushButton" name="btn_ask">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="font">
+         <font>
+          <family>Arial Narrow</family>
+          <weight>50</weight>
+          <bold>false</bold>
+         </font>
+        </property>
         <property name="styleSheet">
          <string notr="true">border-color: rgb(213, 213, 213);</string>
         </property>
         <property name="text">
-         <string>Ask</string>
+         <string>Ask
+(Ctrl + Enter)</string>
         </property>
        </widget>
       </item>
      </layout>
     </item>
-    <!-- Options Area (Run button removed) -->
     <item>
      <layout class="QHBoxLayout" name="optionsLayout">
       <item>
        <widget class="QCheckBox" name="chk_ask_run">
+        <property name="font">
+         <font>
+          <family>Arial Narrow</family>
+         </font>
+        </property>
         <property name="text">
          <string>Ask and Run</string>
         </property>
@@ -184,16 +204,38 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
       </item>
       <item>
        <widget class="QCheckBox" name="chk_reason">
+        <property name="font">
+         <font>
+          <family>Arial Narrow</family>
+         </font>
+        </property>
         <property name="text">
-         <string>Reasoning (Better, but Slower)</string>
+         <string>Reasoning (Better, Slower)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="chk_rag">
+        <property name="font">
+         <font>
+          <family>Arial Narrow</family>
+         </font>
+        </property>
+        <property name="text">
+         <string>RAG(Better, Slower)</string>
         </property>
        </widget>
       </item>
      </layout>
     </item>
-    <!-- Status Area -->
     <item>
      <widget class="QLabel" name="status_label">
+      <property name="font">
+       <font>
+        <family>Cascadia Code</family>
+        <italic>true</italic>
+       </font>
+      </property>
       <property name="text">
        <string>Status: Waiting for your next command.</string>
       </property>

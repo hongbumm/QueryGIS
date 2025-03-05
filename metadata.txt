@@ -5,15 +5,15 @@
 [general]
 name=QueryGIS
 qgisMinimumVersion=3.0
-description=Contorl GIS with ChatGPT
-version=0.1
+description=Contorl QGIS with LLM, Make it Easier!
+version=1.0.1
 author=3DLabs, Juseong Lee
 email=juseonglee99@3dlabs.co.kr
 
-about=QueryGIS - Control QGIS with simple commands! - Chat with ChatGPT, and it will generate codes. *This is an Experimental Project.
+about=QueryGIS - Control QGIS with simple commands! Chat with LLM
 
-tracker=http://bugs
-repository=http://repo
+tracker=https://github.com/hongbumm/QueryGIS/issues
+repository=https://github.com/hongbumm/QueryGIS
 
 # End of mandatory metadata
 
@@ -26,11 +26,11 @@ hasProcessingProvider=no
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=http://homepage
+homepage=https://www.3dlabs.co.kr/kor/main/main.html?
 category=Plugins
 icon=icon.png
 # experimental flag
-experimental=True
+experimental=False
 
 # deprecated flag (applies to the whole plugin, not just a single version)
 deprecated=False
