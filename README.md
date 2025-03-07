@@ -1,8 +1,8 @@
 # QGIS에 AI를 더하다, **QueryGIS**  
 ## Bringing AI to QGIS: **QueryGIS**
 
-## 🤖 **Chat-Bot과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다.**  
-## **Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot!**
+### 🤖 **Chat-Bot과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다.**  
+### **Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot!**
 
 ---
 
