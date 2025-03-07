@@ -206,14 +206,17 @@ class QueryGIS(QObject):
         self.chat_history.append({"role": role, "content": message})
         msg_widget = self.add_chat_message(role, message)
         self.ui.chatLayout.insertWidget(self.ui.chatLayout.count() - 1, msg_widget)
-        # self.ui.chatScrollArea.verticalScrollBar().setValue(self.ui.chatScrollArea.verticalScrollBar().maximum())
         
         # 사용자 메시지가 추가될 때 상태 색상을 기본으로 초기화
         if role == "user":
             self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
-        QTimer.singleShot(10, self.scroll_to_bottom)
+        
+        # Increase the delay to ensure the UI has time to update
+        QTimer.singleShot(100, self.scroll_to_bottom)
 
     def scroll_to_bottom(self):
+        # Force layout update before scrolling
+        QApplication.processEvents()
         scrollbar = self.ui.chatScrollArea.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
     def copy_to_clipboard(self, text):

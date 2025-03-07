@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_DockWidget(object):
     def setupUi(self, DockWidget):
         DockWidget.setObjectName("DockWidget")
-        DockWidget.resize(516, 955)
+        DockWidget.resize(624, 854)
         self.dockWidgetContents = QtWidgets.QWidget()
         self.dockWidgetContents.setMaximumSize(QtCore.QSize(1300, 16777215))
         self.dockWidgetContents.setStyleSheet("background-color: rgb(255, 255, 255);")
@@ -78,7 +78,7 @@ class Ui_DockWidget(object):
         self.chatScrollArea.setWidgetResizable(True)
         self.chatScrollArea.setObjectName("chatScrollArea")
         self.chatWidget = QtWidgets.QWidget()
-        self.chatWidget.setGeometry(QtCore.QRect(0, 0, 492, 530))
+        self.chatWidget.setGeometry(QtCore.QRect(0, 0, 600, 429))
         self.chatWidget.setObjectName("chatWidget")
         self.chatLayout = QtWidgets.QVBoxLayout(self.chatWidget)
         self.chatLayout.setObjectName("chatLayout")
@@ -140,12 +140,7 @@ class Ui_DockWidget(object):
         self.optionsLayout.addWidget(self.chk_rag)
         self.mainLayout.addLayout(self.optionsLayout)
         self.status_label = QtWidgets.QLabel(self.dockWidgetContents)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.status_label.sizePolicy().hasHeightForWidth())
-        self.status_label.setSizePolicy(sizePolicy)
-        self.status_label.setMaximumSize(QtCore.QSize(700, 600))
+        self.status_label.setMaximumSize(QtCore.QSize(1000, 1000))
         font = QtGui.QFont()
         font.setFamily("Cascadia Code")
         font.setItalic(True)
@@ -169,4 +164,4 @@ class Ui_DockWidget(object):
         self.chk_reason.setText(_translate("DockWidget", "Reasoning (Better, Slower)"))
         self.chk_rag.setText(_translate("DockWidget", "RAG(Better, Slower)"))
         self.status_label.setText(_translate("DockWidget", "Status: Waiting for your next command."))
-from . import resources
+import resources_rc

@@ -6,14 +6,20 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>473</width>
-    <height>1110</height>
+    <width>516</width>
+    <height>955</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>QueryGIS</string>
   </property>
   <widget class="QWidget" name="dockWidgetContents">
+   <property name="maximumSize">
+    <size>
+     <width>1300</width>
+     <height>16777215</height>
+    </size>
+   </property>
    <property name="styleSheet">
     <string notr="true">background-color: rgb(255, 255, 255);</string>
    </property>
@@ -110,8 +116,8 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         <rect>
          <x>0</x>
          <y>0</y>
-         <width>449</width>
-         <height>676</height>
+         <width>492</width>
+         <height>530</height>
         </rect>
        </property>
        <layout class="QVBoxLayout" name="chatLayout">
@@ -145,7 +151,7 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         <property name="minimumSize">
          <size>
           <width>0</width>
-          <height>150</height>
+          <height>100</height>
          </size>
         </property>
         <property name="font">
@@ -230,6 +236,18 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     </item>
     <item>
      <widget class="QLabel" name="status_label">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>700</width>
+        <height>600</height>
+       </size>
+      </property>
       <property name="font">
        <font>
         <family>Cascadia Code</family>
