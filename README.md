@@ -1,31 +1,41 @@
-# QueryGIS
+# QGIS에 AI를 더하다, **QueryGIS**  
+## Bringing AI to QGIS: **QueryGIS**
 
-📢 QGIS Chat-Bot 플러그인 : **QueryGIS**의 **베타테스터**를 모집합니다!👏
+## 🤖 **Chat-Bot과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다.**  
+## **Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot!**
 
-지난, PPSUI 발표 때 보여드렸던 플러그인의 개발이 시행착오를 거쳐 베타테스트 단계에 들어섰습니다.
+---
 
-여러분의 업무 능률 향상에 도움이 되고자 열심히 개발 중에 있으며, **베타테스트 과정 중에도 계속해서 개선이 이루어질 예정**입니다. 많은 관심 바랍니다. 🙏
+### 📅 **신청 기한 | Application Deadline**  
+**~2025.03.31**  
+(기한 이후 신청 시 아래 메일로 문의 바랍니다.)  
+(For inquiries after the deadline, please contact us via email below.)
 
------------------------------------------------------------------------
+### 📩 **신청 방법 | How to Apply**  
+`juseonglee99@3dlabs.co.kr` 로 문의  
+(Contact us at `juseonglee99@3dlabs.co.kr`)
 
-- 신청 자격 : 없음. QGIS 사용자 누구나 가능.
-- 테스트 기간  : 25.03.05 ~ **25.05.31**
-- 베타테스트 신청 기한 : **~ 25.03.14** (이후 신청 원할 시 연락 바랍니다.)
-- 수행 내용 : QueryGIS 사용 후 의견 수합 (수시 / 월별)
-- **신청방법 :  juseonglee99@3dlabs.co.kr(mailto:juseonglee99@3dlabs.co.kr)로 메일
+문의 시 아래 정보를 작성 바랍니다.  
+(Please include the following details in your inquiry:)
+- 소속 | Affiliation
+- 이름 | Name
+- 직급 | Position
+- 이메일 | Email
+- 전화번호 (선택) | Phone Number (Optional)
 
------------------------------------------------------------------------
+### ✅ **신청 자격 | Eligibility**  
+- 없음 (학생 / 직장인 모두 가능)  
+(No restrictions – open to students and professionals alike.)
+- 단, 베타테스트 설문조사 및 실행결과표 작성에 동의해야 함  
+(However, participants must agree to complete the beta test survey and execution report.)
 
-**다음에 해당하시는 분들에게 큰 도움이 되리라 생각됩니다.*
+### 💰 **비용 안내 | Cost Information**  
+- **베타테스트 신청 및 기타 비용은 100% 무료입니다.**  
+(**The beta test and all related costs are 100% free.**)
+- **테스트 중 발생하는 비용은 쓰리디랩스가 부담합니다.**  
+(**Any costs incurred during testing will be covered by 3D Labs.**)
 
-💁‍♀️ 가끔 QGIS 쓰긴 하는데 어떤 기능이 있는지 잘 모른다.
+---
 
-💁‍♀️ 업무 중 shp 파일을 다룰 일이 있다.
-
-💁‍♀️ QGIS 를 많이 사용하는데 반복해서 해야 할 일이 많다.
-
-💁‍♀️ tif 파일을 QGIS 에서 확인한다.
-
-**그 어떤 피드백도 가능합니다.* 
-
-잘 안된다, 별로다, 이런건 좋다 등등 여러분의 경험이 최대한 많이 필요합니다. 자주 QGIS 를 사용하지 않으시더라도 부담없이 신청해주셔도 괜찮습니다.
+문의 사항이 있으시면 위 이메일로 연락 바랍니다. 🚀  
+(For any inquiries, please contact us at the email above. 🚀)
