@@ -32,7 +32,12 @@
 
 ✅ QGIS의 모든 기능을 숙지하지 않아도 Chat-Bot 과 대화를 통해 기능 사용이 가능합니다.
 
+<br>
+
 ### **🎬 시연 영상**
+<p align="center">
+    이미지를 클릭해주세요. 👇
+</p>
 
 <p align="center">
     <a href="https://www.youtube.com/watch?v=x31T7725Njs">

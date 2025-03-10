@@ -34,7 +34,12 @@
 
 ✅ Operate its functions through conversations with a Chat-Bot without mastering every feature of QGIS.
 
+<br>
+
 ### **🎬 Demo Video**
+<p align="center">
+    Click on the image 👇
+</p>
 
 <p align="center">
     <a href="https://www.youtube.com/watch?v=x31T7725Njs">
