@@ -9,8 +9,9 @@
 
 
 <p align="center">
-    <img src="./assets/querygis_logo.png" alt="querygis_logo">
+    <img src="./assets/querygis_logo.png" alt="querygis_logo" width="300" height="auto">
 </p>
+
 
 
 <aside>
@@ -33,7 +34,11 @@
 
 ### **🎬 시연 영상**
 
-[![demo vidio](https://img.youtube.com/vi/x31T7725Njs/0.jpg)](https://www.youtube.be/x31T7725Njs)
+<p align="center">
+    <a href="https://www.youtube.com/watch?v=x31T7725Njs">
+        <img src="https://img.youtube.com/vi/x31T7725Njs/0.jpg" alt="demo video">
+    </a>
+</p>
 
 
 <br>
