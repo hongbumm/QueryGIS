@@ -1,23 +1,25 @@
 
 [한국어](README.md) | English
 
+<br>
+
 
 <h1 align="center">
  👋 **Bringing AI to QGIS: <b>QueryGIS</b>
 </h1>
 
 
-<div align="center">
+<p align="center">
     <img src="./asset/querygis_logo.png" alt="querygis_logo">
-</div>
+</p>
+
 
 
 <aside>
 
 **📢 Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot‼️**
 
-
-
+<br>
 
 </aside>
 
@@ -33,8 +35,10 @@
 
 ### **🎬 Demo Video**
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/x31T7725Njs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![demo vidio](https://www.youtube.com/embed/x31T7725Njs/0.jpg)](https://www.youtube.com/embed/x31T7725Njs)
 
+
+<br>
 
 
 ## 🗒️  **Table of Contents**
@@ -52,6 +56,7 @@
   - [⚠️ Precautions](#-precautions)
   - [🗒️ How to Use](#-how-to-use)
 
+<br>
 
 
 ## 📢 Beta Testing
@@ -89,6 +94,8 @@
 > email : `juseonglee99@3dlabs.co.kr`
 > 
 
+<br>
+
 
 ## 🛠️ Installation
 
@@ -98,6 +105,8 @@ To use the plugin, you need to download the provided **compressed file (.zip)** 
 1️⃣ In the **`[Plugins] - [Manage and Install Plugins] - [Install from ZIP]`** tab, install the downloaded compressed file.
 
 2️⃣ After installation, click the icon in the plugin toolbar to open the plugin panel.
+
+<br>
 
 
 ## 🚀 Usage
@@ -136,6 +145,9 @@ Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later
 <p align="center">
     <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
 </p>
+
+<br>
+---
 
 <p align="center">
     <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>

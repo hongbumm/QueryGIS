@@ -1,23 +1,23 @@
 
 한국어 | [English](README_eng.md)
 
+<br>
 
 <h1 align="center">
  👋 QGIS에 AI를 더하다, <b>QueryGIS</b>
 </h1>
 
 
-<div align="center">
+<p align="center">
     <img src="./asset/querygis_logo.png" alt="querygis_logo">
-</div>
+</p>
 
 
 <aside>
 
 **📢 Chat-Bot🤖과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다. ‼️**
 
-
-
+<br>
 
 </aside>
 
@@ -33,8 +33,10 @@
 
 ### **🎬 시연 영상**
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/x31T7725Njs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![demo vidio](https://www.youtube.com/embed/x31T7725Njs/0.jpg)](https://www.youtube.com/embed/x31T7725Njs)
 
+
+<br>
 
 ## 🗒️목차
 
@@ -52,6 +54,7 @@
   - [🗒️ 사용 방법](#-사용-방법)
 
 
+<br>
 
 ## 📢베타테스터 모집
 
@@ -88,6 +91,7 @@
 > 문의 이메일 : `juseonglee99@3dlabs.co.kr`
 > 
 
+<br>
 
 ## 🛠️ 설치
 
@@ -98,6 +102,7 @@
 
 2️⃣ 설치 후 플러그인 툴바 내 아이콘을 선택하여 플러그인 패널을 생성합니다.
 
+<br>
 
 ## 🚀 사용
 
@@ -113,6 +118,7 @@
     - 레이어의 이름을 정확히 명시하였는가?
     - 좌표계가 올바르게 설정되어 있는가?
     - QGIS 내에서 사용할 수 있는 기능인가?
+    
 
 ### 🗒️사용 방법
 
@@ -135,6 +141,9 @@
 <p align="center">
     <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
 </p>
+
+<br>
+---
 
 <p align="center">
     <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>
