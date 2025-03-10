@@ -16,7 +16,7 @@
 
 <aside>
 
-**📢 Chat-Bot🤖과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다. ‼️**
+### **📢 Chat-Bot🤖과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다‼️**
 
 <br>
 
@@ -149,7 +149,7 @@
 </p>
 
 <br>
-***
+
 
 <p align="center">
     <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
@@ -157,5 +157,5 @@
 
 
 <p align="center">
-    <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>
+    <a href="https://www.3dlabs.co.kr/kor/main/main.html" width="100" height="auto">🌐3DLabs HP</a>
 </p>

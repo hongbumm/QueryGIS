@@ -18,7 +18,7 @@
 
 <aside>
 
-**📢 Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot‼️**
+### **📢 Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot‼️**
 
 <br>
 
@@ -154,7 +154,7 @@ Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later
 </p>
 
 <br>
-***
+
 
 <p align="center">
     <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
@@ -162,5 +162,5 @@ Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later
 
 
 <p align="center">
-    <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>
+    <a href="https://www.3dlabs.co.kr/kor/main/main.html" width="100" height="auto">🌐3DLabs HP</a>
 </p>
