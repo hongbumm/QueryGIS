@@ -10,7 +10,7 @@
 
 
 <p align="center">
-    <img src="./asset/querygis_logo.png" alt="querygis_logo">
+    <img src="./assets/querygis_logo.png" alt="querygis_logo">
 </p>
 
 
@@ -35,7 +35,9 @@
 
 ### **🎬 Demo Video**
 
-[![demo vidio](https://www.youtube.com/embed/x31T7725Njs/0.jpg)](https://www.youtube.com/embed/x31T7725Njs)
+[![demo video](https://img.youtube.com/vi/x31T7725Njs/0.jpg)](https://www.youtube.com/watch?v=x31T7725Njs)
+
+
 
 
 <br>
@@ -142,12 +144,13 @@ Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later
     <img src="./assets/UI_2.png" alt="UI_2">
 </p>
 
+<br>
+***
+
 <p align="center">
     <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
 </p>
 
-<br>
----
 
 <p align="center">
     <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>
