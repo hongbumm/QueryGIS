@@ -1,21 +1,27 @@
-# README_eng
 
 [한국어](README.md) | English
 
-## 👋 **Bringing AI to QGIS: QueryGIS**
 
-![querygis_logo.png](./asset/querygis_logo.png)
+<h1 align="center">
+ 👋 **Bringing AI to QGIS: <b>QueryGIS</b>
+</h1>
+
+
+<div align="center">
+    <img src="./asset/querygis_logo.png" alt="querygis_logo">
+</div>
+
 
 <aside>
-📢
 
-**Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot‼️**
+**📢 Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot‼️**
+
+
+
 
 </aside>
 
 ## 💁Overview
-
----
 
 **QueryGIS is a Plugin that Allows You to Command QGIS via Chat-Bot! 🤖**🙌
 
@@ -27,19 +33,33 @@
 
 ### **🎬 Demo Video**
 
-[https://www.youtube.com/watch?v=x31T7725Njs](https://www.youtube.com/watch?v=x31T7725Njs)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/x31T7725Njs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
+
 
 ## 🗒️  **Table of Contents**
 
----
+- [👋 Bringing AI to QGIS: QueryGIS](#-bringing-ai-to-qgis-querygis)
+- [💁 Overview](#-overview)
+- [🎬 Demo Video](#-demo-video)
+- [📢 Beta Testing](#-beta-testing)
+  - [📅 Application Deadline](#-application-deadline)
+  - [📩 How to Apply](#-how-to-apply)
+  - [✅ Eligibility](#-eligibility)
+  - [💰 Cost Information](#-cost-information)
+- [🛠️ Installation](#-installation)
+- [🚀 Usage](#-usage)
+  - [⚠️ Precautions](#-precautions)
+  - [🗒️ How to Use](#-how-to-use)
+
+
 
 ## 📢 Beta Testing
 
----
 
 ### 📅 **Application Deadline**
 
-- **~ 2025.03.31**
+- **Until March 31, 2025**
 - For inquiries after the deadline, please contact us via email below.
 
 ### 📩 **How to Apply**
@@ -47,17 +67,12 @@
 - Contact us at `juseonglee99@3dlabs.co.kr`
 - Please include the following details in your inquiry:
     
-    > - Affiliation
-    > 
-    > 
-    > - Name
-    > 
-    > - Position
-    > 
-    > - Email
-    > 
-    > - Phone Number (Optional)
-    > 
+    - Affiliation
+    - Name
+    - Position
+    - Email 
+    - Phone Number (Optional)
+
 
 ### ✅ **Eligibility**
 
@@ -74,9 +89,9 @@
 > email : `juseonglee99@3dlabs.co.kr`
 > 
 
+
 ## 🛠️ Installation
 
----
 
 To use the plugin, you need to download the provided **compressed file (.zip)** and then install it.
 
@@ -84,9 +99,9 @@ To use the plugin, you need to download the provided **compressed file (.zip)** 
 
 2️⃣ After installation, click the icon in the plugin toolbar to open the plugin panel.
 
+
 ## 🚀 Usage
 
----
 
 Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later, you can install and use it by following a common procedure.
 
@@ -104,15 +119,24 @@ Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later
 
 - Enter the provided API key.
 
-![UI_1.png](./assets/UI_1.png)
+<p align="center">
+    <img src="./assets/UI_1.png" alt="UI_1">
+</p>
 
 - Enter your query and click the Ask (Ctrl + Enter) button.
     - `Ask and Run` function is enabled by default. If you do not want immediate execution, please disable it.
     - Selecting `Reasoning (Better, Slower)` will operate using the reasoning model, o3-mini.
     - Choosing `RAG (Better, Slower)` allows you to receive more accurate and reliable responses.
 
-![UI_2.png](./assets/UI_2.png)
 
-![3dlabs_logo.png](./assets/3dlabs_logo.png)
+<p align="center">
+    <img src="./assets/UI_2.png" alt="UI_2">
+</p>
 
-[🌐3DLabs HP](https://www.3dlabs.co.kr/kor/main/main.html)
+<p align="center">
+    <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
+</p>
+
+<p align="center">
+    <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>
+</p>

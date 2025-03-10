@@ -1,21 +1,27 @@
-# README_kor
 
 한국어 | [English](README_eng.md)
 
-## 👋 QGIS에 AI를 더하다, **QueryGIS**
 
-![querygis_logo.png](./asset/querygis_logo.png)
+<h1 align="center">
+ 👋 QGIS에 AI를 더하다, <b>QueryGIS</b>
+</h1>
+
+
+<div align="center">
+    <img src="./asset/querygis_logo.png" alt="querygis_logo">
+</div>
+
 
 <aside>
-📢
 
-**Chat-Bot🤖과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다. ‼️**
+**📢 Chat-Bot🤖과 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 QueryGIS의 베타테스터를 모집합니다. ‼️**
+
+
+
 
 </aside>
 
 ## 💁개요
-
----
 
 **QueryGIS는 Chat-Bot🤖과의 대화를 통해 QGIS에 명령을 내릴 수 있는 플러그인 입니다.** 🙌
 
@@ -27,19 +33,32 @@
 
 ### **🎬 시연 영상**
 
-[https://www.youtube.com/watch?v=x31T7725Njs](https://www.youtube.com/watch?v=x31T7725Njs)
+<iframe width="560" height="315" src="https://www.youtube.com/embed/x31T7725Njs" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
 
 ## 🗒️목차
 
----
+- [👋 QGIS에 AI를 더하다, **QueryGIS**](#-qgis에-ai를-더하다-querygis)
+- [💁 개요](#-개요)
+  - [🎬 시연 영상](#-시연-영상)
+- [📢 베타테스터 모집](#-베타테스터-모집)
+  - [📅 신청 기한](#-신청-기한)
+  - [📩 신청 방법](#-신청-방법)
+  - [✅ 신청 자격](#-신청-자격)
+  - [💰 비용 안내](#-비용-안내)
+- [🛠️ 설치](#-설치)
+- [🚀 사용](#-사용)
+  - [⚠️ 사용 시 주의사항](#-사용-시-주의사항)
+  - [🗒️ 사용 방법](#-사용-방법)
+
+
 
 ## 📢베타테스터 모집
 
----
 
 ### 📅 **신청 기한**
 
-- **~ 2025.03.31**
+- **2025.03.31 까지**
 - 기한 이후 신청 시 아래 메일로 문의 바랍니다.
 
 ### 📩 **신청 방법**
@@ -47,12 +66,12 @@
 - `juseonglee99@3dlabs.co.kr` 로 문의
 - 문의 시 아래 정보를 작성 바랍니다:
     
-    > - 소속
+    - 소속
     - 이름
     - 직급
     - 이메일
     - 전화번호 (선택)
-    > 
+    
 
 ### ✅ **신청 자격**
 
@@ -69,9 +88,9 @@
 > 문의 이메일 : `juseonglee99@3dlabs.co.kr`
 > 
 
+
 ## 🛠️ 설치
 
----
 
 플러그인 사용을 위해서는 제공되는 플러그인의 압축 파일(.zip)을 다운로드 한 후 설치하는 절차가 필요합니다.
 
@@ -79,9 +98,9 @@
 
 2️⃣ 설치 후 플러그인 툴바 내 아이콘을 선택하여 플러그인 패널을 생성합니다.
 
+
 ## 🚀 사용
 
----
 
 플러그인 사용 방법에 대해 설명합니다. QGIS 3.12 이상 버전인 경우 공통적인 방법으로 설치 및 사용이 가능합니다.
 
@@ -99,15 +118,24 @@
 
 - 제공되는 API key를 입력합니다.
 
-![UI_1.png](./assets/UI_1.png)
+<p align="center">
+    <img src="./assets/UI_1.png" alt="UI_1">
+</p>
 
-- Query를 입력하고 Ask (Ctrl + Enter) 버튼을 클릭합니다**.**
+- Query를 입력하고 Ask (Ctrl + Enter) 버튼을 클릭합니다.
     - `Ask and Run` 기능이 기본으로 설정되어있습니다. 즉시 실행을 원하지 않는다면 해제해주십시오.
     - `Reasoning (Better, Slower)` 선택 시 추론 모델인 o3-mini 로 동작됩니다.
     - `RAG (Better, Slower)` 선택을 통해 더 정확하고 신뢰성 있는 답변을 받을 수 있습니다.
 
-![UI_2.png](./assets/UI_2.png)
 
-![3dlabs_logo.png](./assets/3dlabs_logo.png)
+<p align="center">
+    <img src="./assets/UI_2.png" alt="UI_2">
+</p>
 
-[🌐3DLabs HP](https://www.3dlabs.co.kr/kor/main/main.html)
+<p align="center">
+    <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
+</p>
+
+<p align="center">
+    <a href="https://www.3dlabs.co.kr/kor/main/main.html">🌐3DLabs HP</a>
+</p>
