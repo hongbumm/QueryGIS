@@ -40,7 +40,7 @@
 
 ---
 
-문의 사항이 있으시면 위 이메일로 연락 바랍니다. 
-(For any inquiries, please contact us at the email above.)
+문의 사항이 있으시면 아래 이메일로 연락 바랍니다. 
+(For any inquiries, please contact us at the email below.)
 
 문의 이메일 : juseonglee99@3dlabs.co.kr
