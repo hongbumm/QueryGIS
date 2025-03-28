@@ -119,7 +119,7 @@ class QueryGIS(QObject):
             self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; color: black;")
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
             self.ui.chk_ask_run.setChecked(True)
-            self.ui.chk_reason.setChecked(True)
+            self.ui.chk_reason.setChecked(False)
             self.ui.chk_rag.setChecked(False)
         self.dockwidget.show()
     def eventFilter(self, obj, event):
