@@ -1,0 +1,1299 @@
+ID: 3d:tessellate | Name: 테셀레이트
+ID: gdal:aspect | Name: 사면 향 분석
+ID: gdal:assignprojection | Name: 투영체 적용
+ID: gdal:buffervectors | Name: 벡터 버퍼
+ID: gdal:buildvirtualraster | Name: 가상 래스터 생성
+ID: gdal:buildvirtualvector | Name: 가상 벡터 작성하기
+ID: gdal:cliprasterbyextent | Name: 범위로 래스터 자르기
+ID: gdal:cliprasterbymasklayer | Name: 마스크 레이어로 래스터 자르기
+ID: gdal:clipvectorbyextent | Name: 범위로 벡터 자르기
+ID: gdal:clipvectorbypolygon | Name: 마스크 레이어로 벡터 자르기
+ID: gdal:colorrelief | Name: 색상 기복
+ID: gdal:contour | Name: 등고선 생성
+ID: gdal:contour_polygon | Name: 등고선 폴리곤
+ID: gdal:convertformat | Name: 포맷 변환
+ID: gdal:dissolve | Name: 디졸브
+ID: gdal:executesql | Name: SQL 실행
+ID: gdal:extractprojection | Name: 투영체 추출
+ID: gdal:fillnodata | Name: Fill NoData
+ID: gdal:gdal2tiles | Name: gdal2tiles
+ID: gdal:gdal2xyz | Name: gdal2xyz
+ID: gdal:gdalinfo | Name: 래스터 정보
+ID: gdal:gridaverage | Name: 그리드 (이동 평균)
+ID: gdal:griddatametrics | Name: 그리드 (데이터 계량)
+ID: gdal:gridinversedistance | Name: 그리드 (거리 거듭제곱 반비례)
+ID: gdal:gridinversedistancenearestneighbor | Name: 그리드 (최근접 이웃 탐색으로 거리 반비례 가중)
+ID: gdal:gridlinear | Name: 그리드 (선형)
+ID: gdal:gridnearestneighbor | Name: 그리드 (최근접 이웃)
+ID: gdal:hillshade | Name: 음영기복도
+ID: gdal:importvectorintopostgisdatabaseavailableconnections | Name: PostgreSQL로 내보내기 (사용가능한 연결)
+ID: gdal:importvectorintopostgisdatabasenewconnection | Name: PostgreSQL로 내보내기 (새로운 연결)
+ID: gdal:merge | Name: 병합
+ID: gdal:nearblack | Name: 흑색 보정
+ID: gdal:offsetcurve | Name: 곡선 오프셋
+ID: gdal:ogrinfo | Name: 벡터 정보
+ID: gdal:onesidebuffer | Name: 한쪽 버퍼
+ID: gdal:overviews | Name: 오버뷰 생성 (피라미드)
+ID: gdal:pansharp | Name: Pansharpening
+ID: gdal:pcttorgb | Name: PCT를 RGB로
+ID: gdal:pointsalonglines | Name: 라인을 따라 포인트 생성
+ID: gdal:polygonize | Name: 폴리곤화(래스터를 벡터로)
+ID: gdal:proximity | Name: 근접도 (래스터 거리)
+ID: gdal:rastercalculator | Name: 래스터 계산기
+ID: gdal:rasterize | Name: 래스터화 (벡터를 래스터로)
+ID: gdal:rasterize_over | Name: 래스터화 (속성과 함께 덮어쓰기)
+ID: gdal:rasterize_over_fixed_value | Name: 래스터화 (고정값과 함께 덮어쓰기)
+ID: gdal:rearrange_bands | Name: 밴드 재정렬
+ID: gdal:retile | Name: 타일 재생성
+ID: gdal:rgbtopct | Name: RGB를 PCT로
+ID: gdal:roughness | Name: 거칠기
+ID: gdal:sieve | Name: 거르기
+ID: gdal:slope | Name: 경사
+ID: gdal:tileindex | Name: 타일 ​​인덱스
+ID: gdal:tpitopographicpositionindex | Name: 지형 위치 지수 (TPI)
+ID: gdal:translate | Name: 변환 (포맷 변경)
+ID: gdal:triterrainruggednessindex | Name: 지형 험상 지수 (TRI)
+ID: gdal:viewshed | Name: 가시권 분석
+ID: gdal:warpreproject | Name: 워프(재투영)
+ID: grass:g.extension.list | Name: g.extension.list
+ID: grass:g.extension.manage | Name: g.extension.manage
+ID: grass:g.version | Name: g.version
+ID: grass:i.albedo | Name: i.albedo
+ID: grass:i.aster.toar | Name: i.aster.toar
+ID: grass:i.atcorr | Name: i.atcorr
+ID: grass:i.biomass | Name: i.biomass
+ID: grass:i.cca | Name: i.cca
+ID: grass:i.cluster | Name: i.cluster
+ID: grass:i.colors.enhance | Name: i.colors.enhance
+ID: grass:i.eb.eta | Name: i.eb.eta
+ID: grass:i.eb.evapfr | Name: i.eb.evapfr
+ID: grass:i.eb.hsebal01.coords | Name: i.eb.hsebal01.coords
+ID: grass:i.eb.netrad | Name: i.eb.netrad
+ID: grass:i.eb.soilheatflux | Name: i.eb.soilheatflux
+ID: grass:i.emissivity | Name: i.emissivity
+ID: grass:i.evapo.mh | Name: i.evapo.mh
+ID: grass:i.evapo.pm | Name: i.evapo.pm
+ID: grass:i.evapo.pt | Name: i.evapo.pt
+ID: grass:i.evapo.time | Name: i.evapo.time
+ID: grass:i.fft | Name: i.fft
+ID: grass:i.gensig | Name: i.gensig
+ID: grass:i.gensigset | Name: i.gensigset
+ID: grass:i.group | Name: i.group
+ID: grass:i.his.rgb | Name: i.his.rgb
+ID: grass:i.ifft | Name: i.ifft
+ID: grass:i.image.mosaic | Name: i.image.mosaic
+ID: grass:i.in.spotvgt | Name: i.in.spotvgt
+ID: grass:i.landsat.acca | Name: i.landsat.acca
+ID: grass:i.landsat.toar | Name: i.landsat.toar
+ID: grass:i.maxlik | Name: i.maxlik
+ID: grass:i.modis.qc | Name: i.modis.qc
+ID: grass:i.oif | Name: i.oif
+ID: grass:i.pansharpen | Name: i.pansharpen
+ID: grass:i.pca | Name: i.pca
+ID: grass:i.rgb.his | Name: i.rgb.his
+ID: grass:i.segment | Name: i.segment
+ID: grass:i.smap | Name: i.smap
+ID: grass:i.tasscap | Name: i.tasscap
+ID: grass:i.topo.coor.ill | Name: i.topo.coor.ill
+ID: grass:i.topo.corr | Name: i.topo.corr
+ID: grass:i.vi | Name: i.vi
+ID: grass:i.zc | Name: i.zc
+ID: grass:m.cogo | Name: m.cogo
+ID: grass:nviz | Name: nviz
+ID: grass:r.basins.fill | Name: r.basins.fill
+ID: grass:r.blend.combine | Name: r.blend.combine
+ID: grass:r.blend.rgb | Name: r.blend.rgb
+ID: grass:r.buffer | Name: r.buffer
+ID: grass:r.buffer.lowmem | Name: r.buffer.lowmem
+ID: grass:r.carve | Name: r.carve
+ID: grass:r.category | Name: r.category
+ID: grass:r.category.out | Name: r.category.out
+ID: grass:r.circle | Name: r.circle
+ID: grass:r.clump | Name: r.clump
+ID: grass:r.coin | Name: r.coin
+ID: grass:r.colors | Name: r.colors
+ID: grass:r.colors.out | Name: r.colors.out
+ID: grass:r.colors.stddev | Name: r.colors.stddev
+ID: grass:r.composite | Name: r.composite
+ID: grass:r.contour | Name: r.contour
+ID: grass:r.cost | Name: r.cost
+ID: grass:r.covar | Name: r.covar
+ID: grass:r.cross | Name: r.cross
+ID: grass:r.describe | Name: r.describe
+ID: grass:r.distance | Name: r.distance
+ID: grass:r.drain | Name: r.drain
+ID: grass:r.fill.dir | Name: r.fill.dir
+ID: grass:r.fill.stats | Name: r.fill.stats
+ID: grass:r.fillnulls | Name: r.fillnulls
+ID: grass:r.flow | Name: r.flow
+ID: grass:r.geomorphon | Name: r.geomorphon
+ID: grass:r.grow | Name: r.grow
+ID: grass:r.grow.distance | Name: r.grow.distance
+ID: grass:r.gwflow | Name: r.gwflow
+ID: grass:r.his | Name: r.his
+ID: grass:r.horizon | Name: r.horizon
+ID: grass:r.horizon.height | Name: r.horizon.height
+ID: grass:r.in.lidar | Name: r.in.lidar
+ID: grass:r.in.lidar.info | Name: r.in.lidar.info
+ID: grass:r.info | Name: r.info
+ID: grass:r.kappa | Name: r.kappa
+ID: grass:r.lake | Name: r.lake
+ID: grass:r.latlong | Name: r.latlong
+ID: grass:r.li.cwed | Name: r.li.cwed
+ID: grass:r.li.cwed.ascii | Name: r.li.cwed.ascii
+ID: grass:r.li.dominance | Name: r.li.dominance
+ID: grass:r.li.dominance.ascii | Name: r.li.dominance.ascii
+ID: grass:r.li.edgedensity | Name: r.li.edgedensity
+ID: grass:r.li.edgedensity.ascii | Name: r.li.edgedensity.ascii
+ID: grass:r.li.mpa | Name: r.li.mpa
+ID: grass:r.li.mpa.ascii | Name: r.li.mpa.ascii
+ID: grass:r.li.mps | Name: r.li.mps
+ID: grass:r.li.mps.ascii | Name: r.li.mps.ascii
+ID: grass:r.li.padcv | Name: r.li.padcv
+ID: grass:r.li.padcv.ascii | Name: r.li.padcv.ascii
+ID: grass:r.li.padrange | Name: r.li.padrange
+ID: grass:r.li.padrange.ascii | Name: r.li.padrange.ascii
+ID: grass:r.li.padsd | Name: r.li.padsd
+ID: grass:r.li.padsd.ascii | Name: r.li.padsd.ascii
+ID: grass:r.li.patchdensity | Name: r.li.patchdensity
+ID: grass:r.li.patchdensity.ascii | Name: r.li.patchdensity.ascii
+ID: grass:r.li.patchnum | Name: r.li.patchnum
+ID: grass:r.li.patchnum.ascii | Name: r.li.patchnum.ascii
+ID: grass:r.li.pielou | Name: r.li.pielou
+ID: grass:r.li.pielou.ascii | Name: r.li.pielou.ascii
+ID: grass:r.li.renyi | Name: r.li.renyi
+ID: grass:r.li.renyi.ascii | Name: r.li.renyi.ascii
+ID: grass:r.li.richness | Name: r.li.richness
+ID: grass:r.li.richness.ascii | Name: r.li.richness.ascii
+ID: grass:r.li.shannon | Name: r.li.shannon
+ID: grass:r.li.shannon.ascii | Name: r.li.shannon.ascii
+ID: grass:r.li.shape | Name: r.li.shape
+ID: grass:r.li.shape.ascii | Name: r.li.shape.ascii
+ID: grass:r.li.simpson | Name: r.li.simpson
+ID: grass:r.li.simpson.ascii | Name: r.li.simpson.ascii
+ID: grass:r.mapcalc.simple | Name: r.mapcalc.simple
+ID: grass:r.mask.rast | Name: r.mask.rast
+ID: grass:r.mask.vect | Name: r.mask.vect
+ID: grass:r.mfilter | Name: r.mfilter
+ID: grass:r.mode | Name: r.mode
+ID: grass:r.neighbors | Name: r.neighbors
+ID: grass:r.null | Name: r.null
+ID: grass:r.out.ascii | Name: r.out.ascii
+ID: grass:r.out.gridatb | Name: r.out.gridatb
+ID: grass:r.out.mat | Name: r.out.mat
+ID: grass:r.out.mpeg | Name: r.out.mpeg
+ID: grass:r.out.png | Name: r.out.png
+ID: grass:r.out.pov | Name: r.out.pov
+ID: grass:r.out.ppm | Name: r.out.ppm
+ID: grass:r.out.ppm3 | Name: r.out.ppm3
+ID: grass:r.out.vrml | Name: r.out.vrml
+ID: grass:r.out.vtk | Name: r.out.vtk
+ID: grass:r.out.xyz | Name: r.out.xyz
+ID: grass:r.param.scale | Name: r.param.scale
+ID: grass:r.patch | Name: r.patch
+ID: grass:r.path | Name: r.path
+ID: grass:r.path.coordinate.txt | Name: r.path.coordinate.txt
+ID: grass:r.plane | Name: r.plane
+ID: grass:r.profile | Name: r.profile
+ID: grass:r.proj | Name: r.proj
+ID: grass:r.quant | Name: r.quant
+ID: grass:r.quantile | Name: r.quantile
+ID: grass:r.quantile.plain | Name: r.quantile.plain
+ID: grass:r.random | Name: r.random
+ID: grass:r.random.cells | Name: r.random.cells
+ID: grass:r.random.surface | Name: r.random.surface
+ID: grass:r.reclass | Name: r.reclass
+ID: grass:r.reclass.area | Name: r.reclass.area
+ID: grass:r.recode | Name: r.recode
+ID: grass:r.regression.line | Name: r.regression.line
+ID: grass:r.regression.multi | Name: r.regression.multi
+ID: grass:r.relief | Name: r.relief
+ID: grass:r.relief.scaling | Name: r.relief.scaling
+ID: grass:r.report | Name: r.report
+ID: grass:r.resamp.bspline | Name: r.resamp.bspline
+ID: grass:r.resamp.filter | Name: r.resamp.filter
+ID: grass:r.resamp.interp | Name: r.resamp.interp
+ID: grass:r.resamp.rst | Name: r.resamp.rst
+ID: grass:r.resamp.stats | Name: r.resamp.stats
+ID: grass:r.resample | Name: r.resample
+ID: grass:r.rescale | Name: r.rescale
+ID: grass:r.rescale.eq | Name: r.rescale.eq
+ID: grass:r.rgb | Name: r.rgb
+ID: grass:r.ros | Name: r.ros
+ID: grass:r.series | Name: r.series
+ID: grass:r.series.accumulate | Name: r.series.accumulate
+ID: grass:r.series.interp | Name: r.series.interp
+ID: grass:r.shade | Name: r.shade
+ID: grass:r.sim.sediment | Name: r.sim.sediment
+ID: grass:r.sim.water | Name: r.sim.water
+ID: grass:r.slope.aspect | Name: r.slope.aspect
+ID: grass:r.solute.transport | Name: r.solute.transport
+ID: grass:r.spread | Name: r.spread
+ID: grass:r.spreadpath | Name: r.spreadpath
+ID: grass:r.statistics | Name: r.statistics
+ID: grass:r.stats | Name: r.stats
+ID: grass:r.stats.quantile.out | Name: r.stats.quantile.out
+ID: grass:r.stats.quantile.rast | Name: r.stats.quantile.rast
+ID: grass:r.stats.zonal | Name: r.stats.zonal
+ID: grass:r.stream.extract | Name: r.stream.extract
+ID: grass:r.sun.incidout | Name: r.sun.incidout
+ID: grass:r.sun.insoltime | Name: r.sun.insoltime
+ID: grass:r.sunhours | Name: r.sunhours
+ID: grass:r.sunmask.datetime | Name: r.sunmask.datetime
+ID: grass:r.sunmask.position | Name: r.sunmask.position
+ID: grass:r.surf.area | Name: r.surf.area
+ID: grass:r.surf.contour | Name: r.surf.contour
+ID: grass:r.surf.fractal | Name: r.surf.fractal
+ID: grass:r.surf.gauss | Name: r.surf.gauss
+ID: grass:r.surf.idw | Name: r.surf.idw
+ID: grass:r.surf.random | Name: r.surf.random
+ID: grass:r.terraflow | Name: r.terraflow
+ID: grass:r.texture | Name: r.texture
+ID: grass:r.thin | Name: r.thin
+ID: grass:r.tile | Name: r.tile
+ID: grass:r.tileset | Name: r.tileset
+ID: grass:r.to.vect | Name: r.to.vect
+ID: grass:r.topidx | Name: r.topidx
+ID: grass:r.topmodel | Name: r.topmodel
+ID: grass:r.topmodel.topidxstats | Name: r.topmodel.topidxstats
+ID: grass:r.transect | Name: r.transect
+ID: grass:r.univar | Name: r.univar
+ID: grass:r.uslek | Name: r.uslek
+ID: grass:r.usler | Name: r.usler
+ID: grass:r.viewshed | Name: r.viewshed
+ID: grass:r.volume | Name: r.volume
+ID: grass:r.walk.coords | Name: r.walk.coords
+ID: grass:r.walk.points | Name: r.walk.points
+ID: grass:r.walk.rast | Name: r.walk.rast
+ID: grass:r.water.outlet | Name: r.water.outlet
+ID: grass:r.watershed | Name: r.watershed
+ID: grass:r.what.color | Name: r.what.color
+ID: grass:r.what.coords | Name: r.what.coords
+ID: grass:r.what.points | Name: r.what.points
+ID: grass:v.buffer | Name: v.buffer
+ID: grass:v.build.check | Name: v.build.check
+ID: grass:v.build.polylines | Name: v.build.polylines
+ID: grass:v.class | Name: v.class
+ID: grass:v.clean | Name: v.clean
+ID: grass:v.cluster | Name: v.cluster
+ID: grass:v.db.select | Name: v.db.select
+ID: grass:v.decimate | Name: v.decimate
+ID: grass:v.delaunay | Name: v.delaunay
+ID: grass:v.dissolve | Name: v.dissolve
+ID: grass:v.distance | Name: v.distance
+ID: grass:v.drape | Name: v.drape
+ID: grass:v.edit | Name: v.edit
+ID: grass:v.extract | Name: v.extract
+ID: grass:v.extrude | Name: v.extrude
+ID: grass:v.generalize | Name: v.generalize
+ID: grass:v.hull | Name: v.hull
+ID: grass:v.in.ascii | Name: v.in.ascii
+ID: grass:v.in.dxf | Name: v.in.dxf
+ID: grass:v.in.e00 | Name: v.in.e00
+ID: grass:v.in.geonames | Name: v.in.geonames
+ID: grass:v.in.lidar | Name: v.in.lidar
+ID: grass:v.in.lines | Name: v.in.lines
+ID: grass:v.in.mapgen | Name: v.in.mapgen
+ID: grass:v.in.wfs | Name: v.in.wfs
+ID: grass:v.info | Name: v.info
+ID: grass:v.kcv | Name: v.kcv
+ID: grass:v.kernel.rast | Name: v.kernel.rast
+ID: grass:v.kernel.vector | Name: v.kernel.vector
+ID: grass:v.lidar.correction | Name: v.lidar.correction
+ID: grass:v.lidar.edgedetection | Name: v.lidar.edgedetection
+ID: grass:v.lidar.growing | Name: v.lidar.growing
+ID: grass:v.mkgrid | Name: v.mkgrid
+ID: grass:v.neighbors | Name: v.neighbors
+ID: grass:v.net | Name: v.net
+ID: grass:v.net.alloc | Name: v.net.alloc
+ID: grass:v.net.allpairs | Name: v.net.allpairs
+ID: grass:v.net.bridge | Name: v.net.bridge
+ID: grass:v.net.centrality | Name: v.net.centrality
+ID: grass:v.net.components | Name: v.net.components
+ID: grass:v.net.connectivity | Name: v.net.connectivity
+ID: grass:v.net.distance | Name: v.net.distance
+ID: grass:v.net.flow | Name: v.net.flow
+ID: grass:v.net.iso | Name: v.net.iso
+ID: grass:v.net.nreport | Name: v.net.nreport
+ID: grass:v.net.path | Name: v.net.path
+ID: grass:v.net.report | Name: v.net.report
+ID: grass:v.net.salesman | Name: v.net.salesman
+ID: grass:v.net.spanningtree | Name: v.net.spanningtree
+ID: grass:v.net.steiner | Name: v.net.steiner
+ID: grass:v.net.timetable | Name: v.net.timetable
+ID: grass:v.net.visibility | Name: v.net.visibility
+ID: grass:v.normal | Name: v.normal
+ID: grass:v.out.ascii | Name: v.out.ascii
+ID: grass:v.out.dxf | Name: v.out.dxf
+ID: grass:v.out.postgis | Name: v.out.postgis
+ID: grass:v.out.pov | Name: v.out.pov
+ID: grass:v.out.svg | Name: v.out.svg
+ID: grass:v.out.vtk | Name: v.out.vtk
+ID: grass:v.outlier | Name: v.outlier
+ID: grass:v.overlay | Name: v.overlay
+ID: grass:v.pack | Name: v.pack
+ID: grass:v.parallel | Name: v.parallel
+ID: grass:v.patch | Name: v.patch
+ID: grass:v.perturb | Name: v.perturb
+ID: grass:v.proj | Name: v.proj
+ID: grass:v.qcount | Name: v.qcount
+ID: grass:v.random | Name: v.random
+ID: grass:v.rast.stats | Name: v.rast.stats
+ID: grass:v.reclass | Name: v.reclass
+ID: grass:v.rectify | Name: v.rectify
+ID: grass:v.report | Name: v.report
+ID: grass:v.sample | Name: v.sample
+ID: grass:v.segment | Name: v.segment
+ID: grass:v.select | Name: v.select
+ID: grass:v.split | Name: v.split
+ID: grass:v.surf.bspline | Name: v.surf.bspline
+ID: grass:v.surf.idw | Name: v.surf.idw
+ID: grass:v.surf.rst | Name: v.surf.rst
+ID: grass:v.surf.rst.cvdev | Name: v.surf.rst.cvdev
+ID: grass:v.to.3d | Name: v.to.3d
+ID: grass:v.to.lines | Name: v.to.lines
+ID: grass:v.to.points | Name: v.to.points
+ID: grass:v.to.rast | Name: v.to.rast
+ID: grass:v.transform | Name: v.transform
+ID: grass:v.type | Name: v.type
+ID: grass:v.univar | Name: v.univar
+ID: grass:v.vect.stats | Name: v.vect.stats
+ID: grass:v.voronoi | Name: v.voronoi
+ID: grass:v.voronoi.skeleton | Name: v.voronoi.skeleton
+ID: grass:v.what.rast | Name: v.what.rast
+ID: grass:v.what.vect | Name: v.what.vect
+ID: native:addautoincrementalfield | Name: 자동 증가 필드 추가
+ID: native:addfieldtoattributestable | Name: 속성 테이블에 필드 추가
+ID: native:adduniquevalueindexfield | Name: 유일 값 인덱스 필드 추가
+ID: native:addxyfields | Name: X/Y 필드를 레이어에 추가
+ID: native:affinetransform | Name: 아핀(affine) 변형
+ID: native:aggregate | Name: 집계
+ID: native:alignrasters | Name: 래스터 정렬
+ID: native:alignsingleraster | Name: 래스터 정렬
+ID: native:angletonearest | Name: 피처에 포인트 정렬
+ID: native:antimeridiansplit | Name: 반대 자오선에서 측지선 분할
+ID: native:arrayoffsetlines | Name: 오프셋 (평행) 선의 배열
+ID: native:arraytranslatedfeatures | Name: 변환된 피처 배열
+ID: native:aspect | Name: 경사 방향
+ID: native:assignprojection | Name: 투영체 적용
+ID: native:atlaslayouttoimage | Name: 지도책 조판을 이미지로 내보내기
+ID: native:atlaslayouttomultiplepdf | Name: 지도책 조판을 PDF로 내보내기 (여러 파일)
+ID: native:atlaslayouttopdf | Name: 지도책 조판을 PDF로 내보내기 (단일 파일)
+ID: native:b3dmtogltf | Name: B3DM을 GLTF로 변환
+ID: native:batchnominatimgeocoder | Name: 노미나팀(Nominatim) 지오코드 작업자 배치(batch) 처리
+ID: native:bookmarkstolayer | Name: 공간 북마크를 레이어로 변환
+ID: native:boundary | Name: 경계
+ID: native:boundingboxes | Name: 경계 상자
+ID: native:buffer | Name: 버퍼
+ID: native:bufferbym | Name: 가변 너비 버퍼 (M 값에 따라)
+ID: native:calculateexpression | Name: 표현식 계산
+ID: native:calculatevectoroverlaps | Name: 중첩 분석
+ID: native:categorizeusingstyle | Name: 스타일에서 범주 렌더링 작업자 생성
+ID: native:cellstackpercentile | Name: 셀 스택 백분위수
+ID: native:cellstackpercentrankfromrasterlayer | Name: 래스터 레이어에서 나온 셀 스택 백분위 순위
+ID: native:cellstackpercentrankfromvalue | Name: 값에서 나온 셀 스택 백분위 순위
+ID: native:cellstatistics | Name: 셀 통계
+ID: native:centroids | Name: 중심점
+ID: native:clip | Name: 잘라내기(clip)
+ID: native:collect | Name: 지오메트리 수집
+ID: native:combinestyles | Name: 스타일 데이터베이스 결합하기
+ID: native:concavehull | Name: 오목 껍질
+ID: native:condition | Name: 조건부 분기(conditional branch)
+ID: native:convertgpsdata | Name: GPS 데이터 변환
+ID: native:convertgpxfeaturetype | Name: GPX 피처 유형 변환
+ID: native:converttocurves | Name: 만곡 지오메트리으로 변환
+ID: native:convexhull | Name: 볼록 껍질
+ID: native:countpointsinpolygon | Name: 폴리곤에 포함하는 포인트 개수 계산
+ID: native:coveragesimplify | Name: Simplify coverage
+ID: native:coverageunion | Name: Dissolve coverage
+ID: native:coveragevalidate | Name: Validate coverage
+ID: native:createattributeindex | Name: 속성 인덱스 생성
+ID: native:createconstantrasterlayer | Name: 상수값 래스터 레이어 생성
+ID: native:createdirectory | Name: 디렉터리 생성
+ID: native:creategrid | Name: 그리드 생성
+ID: native:createpointslayerfromtable | Name: 테이블에서 포인트 생성
+ID: native:createrandombinomialrasterlayer | Name: 랜덤 래스터 레이어 생성 (이항 분포)
+ID: native:createrandomexponentialrasterlayer | Name: 랜덤 래스터 레이어 생성 (지수 분포)
+ID: native:createrandomgammarasterlayer | Name: 랜덤 래스터 레이어 생성 (감마 분포)
+ID: native:createrandomgeometricrasterlayer | Name: 랜덤 래스터 레이어 생성 (지오메트릭 분포)
+ID: native:createrandomnegativebinomialrasterlayer | Name: 랜덤 래스터 레이어 생성 (음의 이항 분포)
+ID: native:createrandomnormalrasterlayer | Name: 랜덤 래스터 레이어 생성 (정규 분포)
+ID: native:createrandompoissonrasterlayer | Name: 랜덤 래스터 레이어 생성 (푸아송 분포)
+ID: native:createrandomuniformrasterlayer | Name: 랜덤 래스터 레이어 생성 (균등 분포)
+ID: native:createspatialindex | Name: 공간 인덱스 생성
+ID: native:dbscanclustering | Name: DBSCAN 클러스터링
+ID: native:delaunaytriangulation | Name: 델로네 삼각분할
+ID: native:deletecolumn | Name: 필드 삭제
+ID: native:deleteduplicategeometries | Name: 중복 지오메트리 삭제
+ID: native:deleteholes | Name: 홀 삭제
+ID: native:densifygeometries | Name: 개수로 꼭짓점 추가하기
+ID: native:densifygeometriesgivenaninterval | Name: 간격으로 꼭짓점 추가하기
+ID: native:detectvectorchanges | Name: 데이터셋 변경 사항 탐지
+ID: native:difference | Name: 빼기
+ID: native:dissolve | Name: 디졸브
+ID: native:downloadgpsdata | Name: 장치에서 GPS 데이터 다운로드
+ID: native:downloadvectortiles | Name: 벡터 타일 다운로드
+ID: native:dropgeometries | Name: 지오메트리 삭제
+ID: native:dropmzvalues | Name: M/Z 값 삭제
+ID: native:dtmslopebasedfilter | Name: DTM 필터 (경사 기반)
+ID: native:dxfexport | Name: 레이어를 DXF로 내보내기
+ID: native:equaltofrequency | Name: 빈도와 동일
+ID: native:explodehstorefield | Name: HStore 필드 분해
+ID: native:explodelines | Name: 라인 분해
+ID: native:exportlayersinformation | Name: 레이어(들) 정보 내보내기
+ID: native:exportmeshedges | Name: 메시 가장자리 내보내기 
+ID: native:exportmeshfaces | Name: 메시 면 내보내기 
+ID: native:exportmeshongrid | Name: 그리드에 메시 내보내기 
+ID: native:exportmeshvertices | Name: 메시 꼭짓점(들) 내보내기
+ID: native:exporttospreadsheet | Name: 스프레드시트 내보내기
+ID: native:extendlines | Name: 라인 연장
+ID: native:extenttolayer | Name: 범위로부터 레이어 생성
+ID: native:extractbinary | Name: 바이너리 필드 추출
+ID: native:extractbyattribute | Name: 속성으로 추출
+ID: native:extractbyexpression | Name: 표현식으로 추출
+ID: native:extractbyextent | Name: 범위로 추출/잘라내기
+ID: native:extractbylocation | Name: 위치로 추출
+ID: native:extractlabels | Name: 라벨 추출
+ID: native:extractmvalues | Name: M 값 추출
+ID: native:extractspecificvertices | Name: 특정 꼭짓점 추출
+ID: native:extractvertices | Name: 꼭짓점 추출
+ID: native:extractwithindistance | Name: 거리 안에서 추출
+ID: native:extractzvalues | Name: Z 값 추출
+ID: native:fieldcalculator | Name: 필드 계산기
+ID: native:filedownloader | Name: 파일 다운로드
+ID: native:fillnodata | Name: NODATA 셀 채우기
+ID: native:filter | Name: 피처 필터
+ID: native:filterbygeometry | Name: 지오메트리 유형으로 필터링
+ID: native:filterlayersbytype | Name: 유형으로 레이어 필터링
+ID: native:filterverticesbym | Name: M 값으로 꼭짓점 필터링
+ID: native:filterverticesbyz | Name: Z 값으로 꼭짓점 필터링
+ID: native:fixgeometries | Name: 지오메트리 수정
+ID: native:flattenrelationships | Name: 관계 평탄화
+ID: native:forcerhr | Name: 오른쪽 방향 규칙 적용
+ID: native:fuzzifyrastergaussianmembership | Name: 래스터 퍼지화 (가우스 멤버십)
+ID: native:fuzzifyrasterlargemembership | Name: 래스터 퍼지화 (큰 값 멤버십)
+ID: native:fuzzifyrasterlinearmembership | Name: 래스터 퍼지화(fuzzify) (선형 멤버십)
+ID: native:fuzzifyrasternearmembership | Name: 래스터 퍼지화 (근접 멤버십)
+ID: native:fuzzifyrasterpowermembership | Name: 래스터 퍼지화 (거듭제곱 멤버십)
+ID: native:fuzzifyrastersmallmembership | Name: 래스터 퍼지화 ('작은 값' 멤버십)
+ID: native:generatepointspixelcentroidsinsidepolygons | Name: 폴리곤 내부에 포인트(픽셀 중심) 생성
+ID: native:geometrybyexpression | Name: 표현식 기반 지오메트리
+ID: native:gltftovector | Name: GLTF를 벡터 피처로 변환
+ID: native:greaterthanfrequency | Name: 빈도 초과
+ID: native:highestpositioninrasterstack | Name: 래스터 스택에서 가장 높은 위치
+ID: native:hillshade | Name: 음영기복도
+ID: native:hublines | Name: 라인에 따라 결합 (허브 라인)
+ID: native:importintopostgis | Name: Export to PostgreSQL
+ID: native:importphotos | Name: 지오캐깅된 사진 가져오기
+ID: native:interpolatepoint | Name: 라인 상에 포인트 보간
+ID: native:intersection | Name: 교차 영역
+ID: native:joinattributesbylocation | Name: 위치에 따라 속성 결합
+ID: native:joinattributestable | Name: 필드 값으로 속성 결합
+ID: native:joinbylocationsummary | Name: 위치에 따라 속성 결합 (요약)
+ID: native:joinbynearest | Name: 최근접 거리를 이용하여 속성을 결합
+ID: native:keepnbiggestparts | Name: N개의 최대 부분 유지
+ID: native:kmeansclustering | Name: K-means 클러스터링
+ID: native:layertobookmarks | Name: 레이어를 공간 북마크로 변환
+ID: native:lessthanfrequency | Name: 빈도 미만
+ID: native:linedensity | Name: 라인 밀도 분석
+ID: native:lineintersections | Name: 라인 교차 영역
+ID: native:linesubstring | Name: 라인 부분 추출
+ID: native:loadlayer | Name: 프로젝트에 레이어 불러오기
+ID: native:lowestpositioninrasterstack | Name: 래스터 스택에서 가장 낮은 위치
+ID: native:meancoordinates | Name: 평균 좌표(들)
+ID: native:mergelines | Name: 라인 병합
+ID: native:mergevectorlayers | Name: 벡터 레이어 병합
+ID: native:meshcontours | Name: 등고선 내보내기
+ID: native:meshexportcrosssection | Name: 메시로부터 라인 상의 공간교차 부분 데이터셋 값 추출하기
+ID: native:meshexporttimeseries | Name: 메시 데이터셋의 포인트에서 시계열 값 내보내기
+ID: native:meshrasterize | Name: 메시 데이터셋 래스터화
+ID: native:minimumenclosingcircle | Name: 최소 외함(enclosing) 원
+ID: native:modelerrastercalc | Name: 래스터 계산기
+ID: native:modelervirtualrastercalc | Name: 래스터 계산기 (가상)
+ID: native:multidifference | Name: 차 (다중)
+ID: native:multiintersection | Name: 교차 영역 (다중)
+ID: native:multiparttosingleparts | Name: 다중 부분을 단일 부분으로
+ID: native:multiringconstantbuffer | Name: 다중 고리 버퍼 (고정 거리)
+ID: native:multiunion | Name: 통합 (다중)
+ID: native:nearestneighbouranalysis | Name: 최근접 이웃 분석
+ID: native:offsetline | Name: 라인 오프셋
+ID: native:orderbyexpression | Name: 표현식으로 정렬
+ID: native:orientedminimumboundingbox | Name: 방향 지정 최소 경계 상자
+ID: native:orthogonalize | Name: 직교화
+ID: native:package | Name: 레이어 패키지
+ID: native:pixelstopoints | Name: 래스터 픽셀을 포인트로 변환
+ID: native:pixelstopolygons | Name: 래스터 픽셀을 폴리곤으로 변환
+ID: native:pointonsurface | Name: 표면 상에 있는 포인트
+ID: native:pointsalonglines | Name: 지오메트리 경계를 따르는 포인트
+ID: native:pointstopath | Name: 포인트를 경로로
+ID: native:pointtolayer | Name: 포인트에서 레이어 생성
+ID: native:poleofinaccessibility | Name: 도달불능극
+ID: native:polygonfromlayerextent | Name: 레이어 범위 추출
+ID: native:polygonize | Name: 라인을 폴리곤으로
+ID: native:polygonstolines | Name: 폴리곤을 라인으로
+ID: native:postgisexecutesql | Name: PostgreSQL이 SQL을 실행
+ID: native:printlayoutmapextenttolayer | Name: 조판 지도 범위를 레이어에 인쇄
+ID: native:printlayouttoimage | Name: 인쇄 조판을 이미지로 내보내기
+ID: native:printlayouttopdf | Name: 인쇄 조판을 PDF로 내보내기
+ID: native:projectpointcartesian | Name: 포인트 투영 (직교 좌표계)
+ID: native:promotetomulti | Name: 다중 부분으로 육성
+ID: native:raiseexception | Name: 예외 발생
+ID: native:raisemessage | Name: 발생 메시지
+ID: native:raisewarning | Name: 경고 발생
+ID: native:randomextract | Name: 랜덤 추출
+ID: native:randompointsinextent | Name: 범위 안에 랜덤 포인트 생성
+ID: native:randompointsinpolygons | Name: 폴리곤 안에 랜덤 포인트 생성
+ID: native:randompointsonlines | Name: 라인을 따라 랜덤 포인트 생성
+ID: native:rasterbooleanand | Name: 래스터 불(boolean) AND
+ID: native:rastercalc | Name: 래스터 계산기
+ID: native:rasterize | Name: 맵을 래스터로 변환
+ID: native:rasterlayerproperties | Name: 래스터 레이어 속성
+ID: native:rasterlayerstatistics | Name: 래스터 레이어 통계
+ID: native:rasterlayeruniquevaluesreport | Name: 래스터 레이어 유일 값 보고
+ID: native:rasterlayerzonalstats | Name: 래스터 레이어 구역 통계
+ID: native:rasterlogicalor | Name: 래스터 불(boolean) OR
+ID: native:rastersampling | Name: 래스터 값 샘플링
+ID: native:rastersurfacevolume | Name: 래스터 표면 부피(surface volume)
+ID: native:reclassifybylayer | Name: 레이어로 재분류
+ID: native:reclassifybytable | Name: 테이블로 재분류
+ID: native:rectanglesovalsdiamonds | Name: 직사각형, 타원형, 마름모
+ID: native:refactorfields | Name: 필드 재작성
+ID: native:removeduplicatesbyattribute | Name: 속성으로 중복 삭제
+ID: native:removeduplicatevertices | Name: 중복 꼭짓점 제거
+ID: native:removenullgeometries | Name: NULL 지오메트리 제거
+ID: native:renamelayer | Name: 레이어 이름 바꾸기
+ID: native:renametablefield | Name: 필드 이름 바꾸기
+ID: native:repairshapefile | Name: Shapefile 수정
+ID: native:reprojectlayer | Name: 레이어 재투영
+ID: native:rescaleraster | Name: 래스터 크기 조정
+ID: native:retainfields | Name: 필드 유지
+ID: native:reverselinedirection | Name: 라인 방향 반전
+ID: native:rotatefeatures | Name: 회전(rotate)
+ID: native:roundness | Name: 둥글기
+ID: native:roundrastervalues | Name: 래스터 반올림
+ID: native:ruggednessindex | Name: 험상(ruggedness) 지수
+ID: native:savefeatures | Name: 벡터 피처를 파일로 저장
+ID: native:savelog | Name: 로그를 파일로 저장
+ID: native:saveselectedfeatures | Name: 선택한 피처 추출
+ID: native:segmentizebymaxangle | Name: 최대 각도로 선분화
+ID: native:segmentizebymaxdistance | Name: 최장 거리로 선분화
+ID: native:selectbylocation | Name: 위치로 선택
+ID: native:selectwithindistance | Name: 거리 안에서 선택
+ID: native:serviceareafromlayer | Name: 서비스 영역 (레이어에서)
+ID: native:serviceareafrompoint | Name: 서비스 영역 (포인트에서)
+ID: native:setlayerencoding | Name: 레이어 인코딩 설정
+ID: native:setlayerstyle | Name: 레이어 스타일 설정
+ID: native:setmfromraster | Name: 래스터에서 M값 설정
+ID: native:setmvalue | Name: M 값 설정
+ID: native:setprojectvariable | Name: 프로젝트 변수 설정
+ID: native:setzfromraster | Name: 드레이프 (래스터에서 Z값 설정)
+ID: native:setzvalue | Name: Z 값 설정
+ID: native:shortestline | Name: 피처들 사이의 최단 라인
+ID: native:shortestpathlayertopoint | Name: 최단 경로 (레이어에서 포인트로)
+ID: native:shortestpathpointtolayer | Name: 최단 경로 (포인트에서 레이어로)
+ID: native:shortestpathpointtopoint | Name: 최단 경로 (포인트에서 포인트로)
+ID: native:shpencodinginfo | Name: Shapefile 인코딩 정보 추출
+ID: native:simplifygeometries | Name: 단순화
+ID: native:singlesidedbuffer | Name: 한쪽 버퍼
+ID: native:slope | Name: 경사
+ID: native:smoothgeometry | Name: 평활화
+ID: native:snapgeometries | Name: 지오메트리을 레이어에 스냅
+ID: native:snappointstogrid | Name: 그리드에 포인트 스냅
+ID: native:spatialiteexecutesql | Name: SpatialLite SQL 실행
+ID: native:spatialiteexecutesqlregistered | Name: SpatialLite SQL 실행 (등록된 DB)
+ID: native:splitfeaturesbycharacter | Name: 특성으로 피처 분할
+ID: native:splitlinesbylength | Name: 최대 길이로 라인 분할
+ID: native:splitvectorlayer | Name: 벡터 레이어 분할
+ID: native:splitwithlines | Name: 라인으로 분할
+ID: native:stdbscanclustering | Name: ST-DBSCAN 군집 형성
+ID: native:stringconcatenation | Name: 문자열 연결
+ID: native:stylefromproject | Name: 프로젝트에서 스타일 데이터베이스 생성
+ID: native:subdivide | Name: 세분화(subdivide)
+ID: native:sumlinelengths | Name: 라인 길이 합 계산
+ID: native:swapxy | Name: X와 Y 좌표 바꾸기
+ID: native:symmetricaldifference | Name: 대칭 빼기
+ID: native:taperedbuffer | Name: 뾰족 버퍼
+ID: native:tilesxyzdirectory | Name: XYZ 타일 생성 (디렉터리)
+ID: native:tilesxyzmbtiles | Name: XYZ 타일 생성 (MBTiles)
+ID: native:tinmeshcreation | Name: TIN 메시 생성
+ID: native:transect | Name: 횡단(transect)
+ID: native:transferannotationsfrommain | Name: 주 레이어에서 주석 전송
+ID: native:translategeometry | Name: 변환 (Translate)
+ID: native:truncatetable | Name: 테이블 잘라 맞추기
+ID: native:union | Name: 통합
+ID: native:uploadgpsdata | Name: GPS 데이터를 장치로 업로드
+ID: native:virtualrastercalc | Name: 래스터 계산기 (가상)
+ID: native:voronoipolygons | Name: 보로노이 폴리곤
+ID: native:wedgebuffers | Name: 쐐기(wedge) 버퍼 생성
+ID: native:writevectortiles_mbtiles | Name: 벡터 타일(MBTiles) 작성
+ID: native:writevectortiles_xyz | Name: 벡터 타일(XYZ) 작성
+ID: native:zonalhistogram | Name: 구획 히스토그램
+ID: native:zonalstatistics | Name: 구역 통계 (인플레이스)
+ID: native:zonalstatisticsfb | Name: 구역 통계
+ID: pdal:assignprojection | Name: 투영체 적용
+ID: pdal:boundary | Name: 경계
+ID: pdal:clip | Name: 잘라내기(clip)
+ID: pdal:convertformat | Name: 포맷 변환
+ID: pdal:createcopc | Name: COPC 생성
+ID: pdal:density | Name: 밀도
+ID: pdal:exportraster | Name: 래스터로 내보내기
+ID: pdal:exportrastertin | Name: 래스터로 내보내기 (삼각분할 이용)
+ID: pdal:exportvector | Name: 벡터로 내보내기
+ID: pdal:filter | Name: 필터
+ID: pdal:info | Name: 정보
+ID: pdal:merge | Name: 병합
+ID: pdal:reproject | Name: 재투영
+ID: pdal:thinbydecimate | Name: 솎아내기(thin) (포인트 뛰어넘기)
+ID: pdal:thinbyradius | Name: 솎아내기(thin) (샘플링 반경을 통해)
+ID: pdal:tile | Name: 타일
+ID: pdal:virtualpointcloud | Name: 가상 점구름(VPC) 작성
+ID: qgis:advancedpythonfieldcalculator | Name: 고급 파이썬 필드 계산기
+ID: qgis:barplot | Name: 막대 그래프
+ID: qgis:basicstatisticsforfields | Name: 필드에 대한 기본 통계
+ID: qgis:boxplot | Name: 박스 플롯
+ID: qgis:checkvalidity | Name: 무결성 검증
+ID: qgis:climbalongline | Name: 라인을 따라 오르막
+ID: qgis:convertgeometrytype | Name: 지오메트리 유형 변환
+ID: qgis:definecurrentprojection | Name: Shapefile 좌표계 정의
+ID: qgis:distancematrix | Name: 거리 행렬
+ID: qgis:distancetonearesthublinetohub | Name: 최근접 허브까지의 거리 (라인에서 허브까지)
+ID: qgis:distancetonearesthubpoints | Name: 최근접 허브까지의 거리 (포인트)
+ID: qgis:eliminateselectedpolygons | Name: 선택한 폴리곤 제거
+ID: qgis:executesql | Name: SQL 실행
+ID: qgis:exportaddgeometrycolumns | Name: 지오메트리 속성 추가
+ID: qgis:findprojection | Name: 좌표계 찾기
+ID: qgis:generatepointspixelcentroidsalongline | Name: 라인을 따라 포인트(픽셀의 중심) 생성
+ID: qgis:heatmapkerneldensityestimation | Name: 열지도 (커널 밀도 추정)
+ID: qgis:hypsometriccurves | Name: 고도분포곡선
+ID: qgis:idwinterpolation | Name: 역거리 가중(IDW) 보간법
+ID: qgis:importintospatialite | Name: SpatiaLite로 내보내기
+ID: qgis:knearestconcavehull | Name: Concave Hull (k-최근접 이웃)
+ID: qgis:linestopolygons | Name: 라인을 폴리곤으로
+ID: qgis:listuniquevalues | Name: 유일 값 목록 보기
+ID: qgis:meanandstandarddeviationplot | Name: 평균 및 표준편차 그리기
+ID: qgis:minimumboundinggeometry | Name: 최소 경계 지오메트리
+ID: qgis:pointsdisplacement | Name: 포인트 변위
+ID: qgis:polarplot | Name: 극좌표 그래프
+ID: qgis:postgisexecuteandloadsql | Name: PostgreSQL이 SQL을 불러오고 실행
+ID: qgis:randomextractwithinsubsets | Name: 하위 집합 내 랜덤 추출
+ID: qgis:randompointsalongline | Name: 라인을 따라 랜덤 포인트 생성
+ID: qgis:randompointsinlayerbounds | Name: 레이어 경계 안에 랜덤 포인트 생성
+ID: qgis:randompointsinsidepolygons | Name: 폴리곤 내부에 랜덤 포인트 생성
+ID: qgis:randomselection | Name: 랜덤 선택
+ID: qgis:randomselectionwithinsubsets | Name: 하위 집합 내 랜덤 선택
+ID: qgis:rastercalculator | Name: Raster calculator
+ID: qgis:rasterlayerhistogram | Name: 래스터 레이어 히스토그램
+ID: qgis:rectanglesovalsdiamondsvariable | Name: 직사각형, 타원형, 마름모 (가변)
+ID: qgis:regularpoints | Name: 정규 포인트
+ID: qgis:relief | Name: 기복도
+ID: qgis:scatter3dplot | Name: 벡터 레이어 산포도 3D
+ID: qgis:selectbyattribute | Name: 속성으로 객체 선택
+ID: qgis:selectbyexpression | Name: 표현식으로 객체 선택
+ID: qgis:setstyleforrasterlayer | Name: 래스터 레이어 스타일 설정
+ID: qgis:setstyleforvectorlayer | Name: 벡터 레이어 용 스타일 설정
+ID: qgis:statisticsbycategories | Name: 범주 별 통계
+ID: qgis:texttofloat | Name: 문자열을 부동소수점으로
+ID: qgis:tininterpolation | Name: TIN 보간
+ID: qgis:topologicalcoloring | Name: 위상적 색상 작업
+ID: qgis:variabledistancebuffer | Name: 가변 거리 버퍼
+ID: qgis:vectorlayerhistogram | Name: 벡터 레이어 히스토그램
+ID: qgis:vectorlayerscatterplot | Name: 벡터 레이어 산포도
+ID: quickosm:buildqueryaroundarea | Name: 지역 주변에 쿼리 작성
+ID: quickosm:buildquerybyattributeonly | Name: 속성으로만 쿼리 작성
+ID: quickosm:buildqueryextent | Name: 범위내부에 쿼리 작성
+ID: quickosm:buildqueryinsidearea | Name: 지역 내에서 쿼리 작성
+ID: quickosm:buildrawquery | Name: 원시 쿼리 작성
+ID: quickosm:decoratelayer | Name: OSM에서 레이어 꾸미기
+ID: quickosm:downloadosmdataaroundareaquery | Name: 지역 주변 쿼리에서 OSM 데이터 다운로드
+ID: quickosm:downloadosmdataextentquery | Name: 범위에서 쿼리에서 OSM 데이터 다운로드
+ID: quickosm:downloadosmdatainareaquery | Name: 지역의 쿼리에서 OSM 데이터 다운로드
+ID: quickosm:downloadosmdatanotspatialquery | Name: 비공간 쿼리에서 OSM 데이터 다운로드
+ID: quickosm:downloadosmdatarawquery | Name: 원시 쿼리에서 OSM 데이터 다운로드
+ID: quickosm:openosmfile | Name: OSM 파일에서 하위 레이어 열기
+ID: sagang:01:asimplelittersystem | Name: 01: a simple litter system
+ID: sagang:02:carboncyclesimulationforterrestrialbiomass | Name: 02: carbon cycle simulation for terrestrial biomass
+ID: sagang:03:spatiallydistributedsimulationofsoilnitrogendynamics | Name: 03: spatially distributed simulation of soil nitrogen dynamics
+ID: sagang:3dpointsselection | Name: 3d points selection
+ID: sagang:accumulatedcost | Name: Accumulated cost
+ID: sagang:accumulationfunctions | Name: Accumulation functions
+ID: sagang:addcoordinatestopoints | Name: Add coordinates to points
+ID: sagang:addpointattributestopolygons | Name: Add point attributes to polygons
+ID: sagang:addpolygonattributestopoints | Name: Add polygon attributes to points
+ID: sagang:addrastervaluestofeatures | Name: Add raster values to features
+ID: sagang:addrastervaluestopoints | Name: Add raster values to points
+ID: sagang:aggregatepointobservations | Name: Aggregate point observations
+ID: sagang:aggregationindex | Name: Aggregation index
+ID: sagang:airhumidityconversions | Name: Air humidity conversions
+ID: sagang:airpressureadjustment | Name: Air pressure adjustment
+ID: sagang:analyticalhierarchyprocess | Name: Analytical hierarchy process
+ID: sagang:analyticalhillshading | Name: Analytical hillshading
+ID: sagang:angmap | Name: Angmap
+ID: sagang:angulardistanceweighted | Name: Angular distance weighted
+ID: sagang:annualcourseofdailyinsolation | Name: Annual course of daily insolation
+ID: sagang:artificialneuralnetworkclassification | Name: Artificial neural network classification
+ID: sagang:automatedcloudcoverassessment | Name: Automated cloud cover assessment
+ID: sagang:averagewithmask1 | Name: Average with mask 1
+ID: sagang:averagewithmask2 | Name: Average with mask 2
+ID: sagang:averagewiththereshold1 | Name: Average with thereshold 1
+ID: sagang:averagewiththereshold2 | Name: Average with thereshold 2
+ID: sagang:averagewiththereshold3 | Name: Average with thereshold 3
+ID: sagang:basicterrainanalysis | Name: Basic terrain analysis
+ID: sagang:binaryerosionreconstruction | Name: Binary erosion-reconstruction
+ID: sagang:bioclimaticvariables | Name: Bioclimatic variables
+ID: sagang:boostingclassification | Name: Boosting classification
+ID: sagang:boundarycellstopolygons | Name: Boundary cells to polygons
+ID: sagang:breachdepressions | Name: Breach depressions
+ID: sagang:bsplineapproximation | Name: B-spline approximation
+ID: sagang:burnstreamnetworkintodem | Name: Burn stream network into dem
+ID: sagang:cannyedgedetection | Name: Canny edge detection
+ID: sagang:catchmentarea | Name: Catchment area
+ID: sagang:catchmentareaflowtracing | Name: Catchment area (flow tracing)
+ID: sagang:catchmentarearecursive | Name: Catchment area (recursive)
+ID: sagang:categoricalcoincidence | Name: Categorical coincidence
+ID: sagang:cellbalance | Name: Cell balance
+ID: sagang:changeagridsnodatavalue | Name: Change a grid's no-data value
+ID: sagang:changeagridsnodatavaluebulkprocessing | Name: Change a grid's no-data value [bulk processing]
+ID: sagang:changedatastorage | Name: Change data storage
+ID: sagang:changegridvaluesfloodfill | Name: Change grid values - flood fill
+ID: sagang:changelongitudinalrangeforgrids | Name: Change longitudinal range for grids
+ID: sagang:channelnetwork | Name: Channel network
+ID: sagang:channelnetworkanddrainagebasins | Name: Channel network and drainage basins
+ID: sagang:citindex | Name: Cit index
+ID: sagang:cliffmetrics | Name: Cliffmetrics
+ID: sagang:climateclassification | Name: Climate classification
+ID: sagang:clipgrids | Name: Clip grids
+ID: sagang:clippointswithpolygons | Name: Clip points with polygons
+ID: sagang:cliprasterwithpolygon | Name: Clip raster with polygon
+ID: sagang:closegaps | Name: Close gaps
+ID: sagang:closegapswithspline | Name: Close gaps with spline
+ID: sagang:closegapswithstepwiseresampling | Name: Close gaps with stepwise resampling
+ID: sagang:closeonecellgaps | Name: Close one cell gaps
+ID: sagang:clouddetection | Name: Cloud detection
+ID: sagang:cloudoverlap | Name: Cloud overlap
+ID: sagang:cloudshadowdetection | Name: Cloud shadow detection
+ID: sagang:clusteranalysisforpointclouds | Name: Cluster analysis for point clouds
+ID: sagang:coastalprofilecrossings | Name: Coastal profile crossings
+ID: sagang:coldairflow | Name: Cold air flow
+ID: sagang:colorisationpc | Name: Colorisation (pc)
+ID: sagang:colournormalizedbroveysharpening | Name: Colour normalized brovey sharpening
+ID: sagang:colournormalizedspectralsharpening | Name: Colour normalized spectral sharpening
+ID: sagang:combineclasses | Name: Combine classes
+ID: sagang:concentration | Name: Concentration
+ID: sagang:confusionmatrixpolygonsgrid | Name: Confusion matrix (polygons / grid)
+ID: sagang:confusionmatrixtwogrids | Name: Confusion matrix (two grids)
+ID: sagang:connectedcomponentlabeling | Name: Connected component labeling
+ID: sagang:connectivityanalysis | Name: Connectivity analysis
+ID: sagang:constantgrid | Name: Constant grid
+ID: sagang:contourlines | Name: Contour lines
+ID: sagang:contourlinesfrompoints | Name: Contour lines from points
+ID: sagang:convergenceindex | Name: Convergence index
+ID: sagang:convergenceindexsearchradius | Name: Convergence index (search radius)
+ID: sagang:convertlinepolygonverticestopoints | Name: Convert line/polygon vertices to points
+ID: sagang:convertlinestopolygons | Name: Convert lines to polygons
+ID: sagang:convertmultipointstopoints | Name: Convert multipoints to points
+ID: sagang:convertpointstolines | Name: Convert points to line(s)
+ID: sagang:convertpolygonlineverticestopoints | Name: Convert polygon/line vertices to points
+ID: sagang:convertpolygonstolines | Name: Convert polygons to lines
+ID: sagang:converttabletopoints | Name: Convert table to points
+ID: sagang:convertvertextype2d3d | Name: Convert vertex type (2d/3d)
+ID: sagang:convexhull | Name: Convex hull
+ID: sagang:conwaysgameoflife | Name: Conway's game of life
+ID: sagang:coordinateconversiongrids | Name: Coordinate conversion (grids)
+ID: sagang:coordinateconversiontable | Name: Coordinate conversion (table)
+ID: sagang:coordinatereferencesystempicker | Name: Coordinate reference system picker
+ID: sagang:coordinatetransformationgrid | Name: Coordinate transformation (grid)
+ID: sagang:coordinatetransformationgridlist | Name: Coordinate transformation (grid list)
+ID: sagang:coordinatetransformationshapes | Name: Coordinate transformation (shapes)
+ID: sagang:coordinatetransformationshapeslist | Name: Coordinate transformation (shapes list)
+ID: sagang:copygrid | Name: Copy grid
+ID: sagang:copyselectiontonewshapeslayer | Name: Copy selection to new shapes layer
+ID: sagang:copyshapes | Name: Copy shapes
+ID: sagang:copyshapesfromregion | Name: Copy shapes from region
+ID: sagang:countpointsinpolygons | Name: Count points in polygons
+ID: sagang:coverageofcategories | Name: Coverage of categories
+ID: sagang:covereddistance | Name: Covered distance
+ID: sagang:creategraticule | Name: Create graticule
+ID: sagang:createpointgrid | Name: Create point grid
+ID: sagang:createrandompoints | Name: Create random points
+ID: sagang:createrastercataloguefromfiles | Name: Create raster catalogue from files
+ID: sagang:createrastercataloguesfromdirectory | Name: Create raster catalogues from directory
+ID: sagang:createtileshapefromvirtualpointcloud | Name: Create tileshape from virtual point cloud
+ID: sagang:createvirtualpointclouddataset | Name: Create virtual point cloud dataset
+ID: sagang:createvirtualrastervrt | Name: Create virtual raster (vrt)
+ID: sagang:croptodata | Name: Crop to data
+ID: sagang:crossclassificationandtabulation | Name: Cross-classification and tabulation
+ID: sagang:crossprofiles | Name: Cross profiles
+ID: sagang:curvatureclassification | Name: Curvature classification
+ID: sagang:dailyinsolationoverlatitude | Name: Daily insolation over latitude
+ID: sagang:dailysolarradiation | Name: Daily solar radiation
+ID: sagang:dailytohourlyevapotranspiration | Name: Daily to hourly evapotranspiration
+ID: sagang:decisiontree | Name: Decision tree
+ID: sagang:decisiontreeclassification | Name: Decision tree classification
+ID: sagang:definegeoreferenceforgrids | Name: Define georeference for grids
+ID: sagang:deleteselectionfromshapeslayer | Name: Delete selection from shapes layer
+ID: sagang:destriping | Name: Destriping
+ID: sagang:destripingwithmask | Name: Destriping with mask
+ID: sagang:difference | Name: Difference
+ID: sagang:diffusepollutionrisk | Name: Diffuse pollution risk
+ID: sagang:diffusivehillslopeevolutionadi | Name: Diffusive hillslope evolution (adi)
+ID: sagang:diffusivehillslopeevolutionftcs | Name: Diffusive hillslope evolution (ftcs)
+ID: sagang:directgeoreferencingofairbornephotographs | Name: Direct georeferencing of airborne photographs
+ID: sagang:directionalaverage | Name: Directional average
+ID: sagang:directionalgridstatistics | Name: Directional grid statistics
+ID: sagang:directionalstatisticsforrasterlayer | Name: Directional statistics for raster layer
+ID: sagang:distancevigra | Name: Distance (vigra)
+ID: sagang:diurnalanisotropicheat | Name: Diurnal anisotropic heat
+ID: sagang:diversityofcategories | Name: Diversity of categories
+ID: sagang:downslopedistancegradient | Name: Downslope distance gradient
+ID: sagang:droppointcloudattributes | Name: Drop point cloud attributes
+ID: sagang:dtmfilterslopebased | Name: Dtm filter (slope-based)
+ID: sagang:earthsorbitalparameters | Name: Earth's orbital parameters
+ID: sagang:edgecontamination | Name: Edge contamination
+ID: sagang:edgedetectionvigra | Name: Edge detection (vigra)
+ID: sagang:effectiveairflowheights | Name: Effective air flow heights
+ID: sagang:enhancedvegetationindex | Name: Enhanced vegetation index
+ID: sagang:evapotranspirationgrid | Name: Evapotranspiration (grid)
+ID: sagang:evapotranspirationtable | Name: Evapotranspiration (table)
+ID: sagang:exportatlasboundaryfile | Name: Export atlas boundary file
+ID: sagang:exportesriarcinfogrid | Name: Export esri arc/info grid
+ID: sagang:exportgeotiff | Name: Export geotiff
+ID: sagang:exportgpx | Name: Export gpx
+ID: sagang:exportgridtoxyz | Name: Export grid to xyz
+ID: sagang:exportgstatshapes | Name: Export gstat shapes
+ID: sagang:exportlaslazfile | Name: Export las/laz file
+ID: sagang:exportpointcloudtotextfile | Name: Export point cloud to text file
+ID: sagang:exportpolygonstohtmlimagemap | Name: Export polygons to html image map
+ID: sagang:exportraster | Name: Export raster
+ID: sagang:exportscalablevectorgraphicssvgfile | Name: Export scalable vector graphics (svg) file
+ID: sagang:exportshapes | Name: Export shapes
+ID: sagang:exportshapestogenerate | Name: Export shapes to generate
+ID: sagang:exportshapestokml | Name: Export shapes to kml
+ID: sagang:exportshapestoxyz | Name: Export shapes to xyz
+ID: sagang:exportsimplefeaturestowellknowntext | Name: Export simple features to well known text
+ID: sagang:exportsurferblankingfile | Name: Export surfer blanking file
+ID: sagang:exportsurfergrid | Name: Export surfer grid
+ID: sagang:exporttexttable | Name: Export text table
+ID: sagang:exporttruecolorbitmap | Name: Export true color bitmap
+ID: sagang:exportwaspterrainmapfile | Name: Export wasp terrain map file
+ID: sagang:exportwrfgeogridbinaryformat | Name: Export wrf geogrid binary format
+ID: sagang:extractclosedlines | Name: Extract closed lines
+ID: sagang:fastrepresentativeness | Name: Fast representativeness
+ID: sagang:featureextents | Name: Feature extents
+ID: sagang:fillsinksplanchondarboux2001 | Name: Fill sinks (planchon/darboux, 2001)
+ID: sagang:fillsinksqmofesp | Name: Fill sinks (qm of esp)
+ID: sagang:fillsinkswangliu | Name: Fill sinks (wang & liu)
+ID: sagang:fillsinksxxlwangliu | Name: Fill sinks xxl (wang & liu)
+ID: sagang:fireriskanalysis | Name: Fire risk analysis
+ID: sagang:flatdetection | Name: Flat detection
+ID: sagang:flattenpolygonlayer | Name: Flatten polygon layer
+ID: sagang:fliplinedirection | Name: Flip line direction
+ID: sagang:flowaccumulationonestep | Name: Flow accumulation (one step)
+ID: sagang:flowaccumulationparallelizable | Name: Flow accumulation (parallelizable)
+ID: sagang:flowaccumulationqmofesp | Name: Flow accumulation (qm of esp)
+ID: sagang:flowbetweenfields | Name: Flow between fields
+ID: sagang:flowpathlength | Name: Flow path length
+ID: sagang:flowwidthandspecificcatchmentarea | Name: Flow width and specific catchment area
+ID: sagang:focalmechanismbeachballplots | Name: Focal mechanism (beachball plots)
+ID: sagang:focalpcaonagrid | Name: Focal pca on a grid
+ID: sagang:focalstatistics | Name: Focal statistics
+ID: sagang:fourierfiltervigra | Name: Fourier filter (vigra)
+ID: sagang:fouriertransforminversevigra | Name: Fourier transform inverse (vigra)
+ID: sagang:fouriertransformvigra | Name: Fourier transform (vigra)
+ID: sagang:fractalbrowniannoise | Name: Fractal brownian noise
+ID: sagang:fragmentationalternative | Name: Fragmentation (alternative)
+ID: sagang:fragmentationclassesfromdensityandconnectivity | Name: Fragmentation classes from density and connectivity
+ID: sagang:fragmentationstandard | Name: Fragmentation (standard)
+ID: sagang:frequencydomainfilter | Name: Frequency domain filter
+ID: sagang:frostchangefrequency | Name: Frost change frequency
+ID: sagang:functionplotter | Name: Function plotter
+ID: sagang:fuzzify | Name: Fuzzify
+ID: sagang:fuzzyintersectionand | Name: Fuzzy intersection (and)
+ID: sagang:fuzzylandformelementclassification | Name: Fuzzy landform element classification
+ID: sagang:fuzzyunionor | Name: Fuzzy union (or)
+ID: sagang:gaussianfilter | Name: Gaussian filter
+ID: sagang:gdalformats | Name: Gdal formats
+ID: sagang:generateshapes | Name: Generate shapes
+ID: sagang:geocoding | Name: Geocoding
+ID: sagang:geodesicmorphologicalreconstruction | Name: Geodesic morphological reconstruction
+ID: sagang:geographiccoordinategrids | Name: Geographic coordinate grids
+ID: sagang:geographicdistances | Name: Geographic distances
+ID: sagang:geographicdistancespairofcoordinates | Name: Geographic distances (pair of coordinates)
+ID: sagang:geometricfigures | Name: Geometric figures
+ID: sagang:geomorphons | Name: Geomorphons
+ID: sagang:georeferencewithcoordinategrids | Name: Georeference with coordinate grids
+ID: sagang:getgridfromvirtualpointcloud | Name: Get grid from virtual point cloud
+ID: sagang:getsubsetfromvirtualpointcloud | Name: Get subset from virtual point cloud
+ID: sagang:globalmoransiforrasterlayer | Name: Global moran's i for raster layer
+ID: sagang:gpsbabel | Name: Gpsbabel
+ID: sagang:gpxtoshapefile | Name: Gpx to shapefile
+ID: sagang:gradientlinesfrompoints | Name: Gradient lines from points
+ID: sagang:gradientvectorfromcartesiantopolarcoordinates | Name: Gradient vector from cartesian to polar coordinates
+ID: sagang:gradientvectorfrompolartocartesiancoordinates | Name: Gradient vector from polar to cartesian coordinates
+ID: sagang:gradientvectorsfromdirectionalcomponents | Name: Gradient vectors from directional components
+ID: sagang:gradientvectorsfromdirectionandlength | Name: Gradient vectors from direction and length
+ID: sagang:gradientvectorsfromsurface | Name: Gradient vectors from surface
+ID: sagang:gravitationalprocesspathmodel | Name: Gravitational process path model
+ID: sagang:gridcalculator | Name: Grid calculator
+ID: sagang:gridcellareacoveredbypolygons | Name: Grid cell area covered by polygons
+ID: sagang:gridclassesareaforpolygons | Name: Grid classes area for polygons
+ID: sagang:gridcombination | Name: Gridcombination
+ID: sagang:gridnormalization | Name: Grid normalization
+ID: sagang:gridsfromclassifiedgridandtable | Name: Grids from classified grid and table
+ID: sagang:gridstandardization | Name: Grid standardization
+ID: sagang:gridstatisticsforpoints | Name: Grid statistics for points
+ID: sagang:gridsystemextent | Name: Grid system extent
+ID: sagang:gridvaluesandpolygonattributestopoints | Name: Grid values and polygon attributes to points
+ID: sagang:groundclassification | Name: Ground classification
+ID: sagang:growingdegreedays | Name: Growing degree days
+ID: sagang:gwrforgriddownscaling | Name: Gwr for grid downscaling
+ID: sagang:gwrformultiplepredictorlayers | Name: Gwr for multiple predictor layers
+ID: sagang:gwrformultiplepredictorsgriddedmodeloutput | Name: Gwr for multiple predictors (gridded model output)
+ID: sagang:gwrformultiplepredictorsshapes | Name: Gwr for multiple predictors (shapes)
+ID: sagang:gwrforsinglepredictorgriddedmodeloutput | Name: Gwr for single predictor (gridded model output)
+ID: sagang:gwrforsinglepredictorlayer | Name: Gwr for single predictor layer
+ID: sagang:histogrammatching | Name: Histogram matching
+ID: sagang:hodgepodgemachine | Name: Hodgepodge machine
+ID: sagang:houghcircletransformation | Name: Hough circle transformation
+ID: sagang:hypsometry | Name: Hypsometry
+ID: sagang:ihssharpening | Name: Ihs sharpening
+ID: sagang:imcorrfeaturetracking | Name: Imcorr - feature tracking
+ID: sagang:importatlasboundaryfile | Name: Import atlas boundary file
+ID: sagang:importbuildingsketchesfromcitygml | Name: Import building sketches from citygml
+ID: sagang:importclipandresamplegrids | Name: Import, clip and resample grids
+ID: sagang:importcrugrids | Name: Import cru grids
+ID: sagang:importerdaslangis | Name: Import erdas lan/gis
+ID: sagang:importfromvirtualrastervrt | Name: Import from virtual raster (vrt)
+ID: sagang:importgpx | Name: Import gpx
+ID: sagang:importgridsfromkml | Name: Import grids from kml
+ID: sagang:importgstatshapes | Name: Import gstat shapes
+ID: sagang:importlandsatscene | Name: Import landsat scene
+ID: sagang:importnetcdf | Name: Import netcdf
+ID: sagang:importpointcloud | Name: Import point cloud
+ID: sagang:importpointcloudfromptsfile | Name: Import point cloud from pts file
+ID: sagang:importraster | Name: Import raster
+ID: sagang:importsentinel2scene | Name: Import sentinel-2 scene
+ID: sagang:importsentinel3olciscene | Name: Import sentinel-3 olci scene
+ID: sagang:importshapes | Name: Import shapes
+ID: sagang:importshapesfromxyz | Name: Import shapes from xyz
+ID: sagang:importsimplefeaturesfromwellknowntext | Name: Import simple features from well known text
+ID: sagang:importsurferblankingfiles | Name: Import surfer blanking files
+ID: sagang:importtexttable | Name: Import text table
+ID: sagang:importtexttables | Name: Import text tables
+ID: sagang:importtexttablewithnumbersonly | Name: Import text table with numbers only
+ID: sagang:importusgssrtmgrid | Name: Import usgs srtm grid
+ID: sagang:importwaspterrainmapfile | Name: Import wasp terrain map file
+ID: sagang:importwrfgeogridbinaryformat | Name: Import wrf geogrid binary format
+ID: sagang:interpolatecubicspline | Name: Interpolate (cubic spline)
+ID: sagang:intersect | Name: Intersect
+ID: sagang:inversedistanceweightedinterpolation | Name: Inverse distance weighted interpolation
+ID: sagang:inversefouriertransformation | Name: Inverse fourier transformation
+ID: sagang:inverseprincipalcomponentsrotation | Name: Inverse principal components rotation
+ID: sagang:invertdatanodata | Name: Invert data/no-data
+ID: sagang:invertgrid | Name: Invert grid
+ID: sagang:invertselectionofshapeslayer | Name: Invert selection of shapes layer
+ID: sagang:isochronesvariablespeed | Name: Isochrones variable speed
+ID: sagang:isodataclusteringforgrids | Name: Isodata clustering for grids
+ID: sagang:isolatedpointsfilter | Name: Isolated points filter
+ID: sagang:iterativetruncation | Name: Iterative truncation
+ID: sagang:kerneldensityestimation | Name: Kernel density estimation
+ID: sagang:kmeansclusteringforgrids | Name: K-means clustering for grids
+ID: sagang:knearestneighboursclassification | Name: K-nearest neighbours classification
+ID: sagang:landcoverscenariooffset | Name: Land cover scenario offset
+ID: sagang:landflowversion10build351b | Name: Landflow version 1.0 (build 3.5.1b)
+ID: sagang:landsatimportwithoptions | Name: Landsat import with options
+ID: sagang:landsurfacetemperature | Name: Land surface temperature
+ID: sagang:landsurfacetemperaturelapserates | Name: Land surface temperature (lapse rates)
+ID: sagang:landusescenariogenerator | Name: Land use scenario generator
+ID: sagang:laplacianfilter | Name: Laplacian filter
+ID: sagang:lapseratebasedtemperaturedownscaling | Name: Lapse rate based temperature downscaling
+ID: sagang:lapseratebasedtemperaturedownscalingbulkprocessing | Name: Lapse rate based temperature downscaling (bulk processing)
+ID: sagang:largestcirclesinpolygons | Name: Largest circles in polygons
+ID: sagang:latitudelongitudegraticule | Name: Latitude/longitude graticule
+ID: sagang:layerofextremevalue | Name: Layer of extreme value
+ID: sagang:leastcostpaths | Name: Least cost paths
+ID: sagang:linecrossings | Name: Line crossings
+ID: sagang:linedissolve | Name: Line dissolve
+ID: sagang:linepartstoseparatelines | Name: Line parts to separate lines
+ID: sagang:linepolygonintersection | Name: Line-polygon intersection
+ID: sagang:lineproperties | Name: Line properties
+ID: sagang:linesimplification | Name: Line simplification
+ID: sagang:linesmoothing | Name: Line smoothing
+ID: sagang:localclimatezoneclassification | Name: Local climate zone classification
+ID: sagang:localminimaandmaxima | Name: Local minima and maxima
+ID: sagang:localstatisticalmeasures | Name: Local statistical measures
+ID: sagang:logisticregressionclassification | Name: Logistic regression classification
+ID: sagang:longitudinalgridstatistics | Name: Longitudinal grid statistics
+ID: sagang:lsfactor | Name: Ls factor
+ID: sagang:lsfactorfieldbased | Name: Ls-factor, field based
+ID: sagang:lsfactoronestep | Name: Ls factor (one step)
+ID: sagang:majorityminorityfilter | Name: Majority/minority filter
+ID: sagang:massbalanceindex | Name: Mass balance index
+ID: sagang:maximumentropyclassification | Name: Maximum entropy classification
+ID: sagang:maximumentropypresenceprediction | Name: Maximum entropy presence prediction
+ID: sagang:maximumflowpathlength | Name: Maximum flow path length
+ID: sagang:meltonruggednessnumber | Name: Melton ruggedness number
+ID: sagang:mergepointclouds | Name: Merge point clouds
+ID: sagang:mergetables | Name: Merge tables
+ID: sagang:mergevectorlayers | Name: Merge vector layers
+ID: sagang:meridionalgridstatistics | Name: Meridional grid statistics
+ID: sagang:meshdenoise | Name: Mesh denoise
+ID: sagang:metricconversions | Name: Metric conversions
+ID: sagang:minimumdistanceanalysis | Name: Minimum distance analysis
+ID: sagang:mirrorgrid | Name: Mirror grid
+ID: sagang:mmfsagasoilerosionmodel | Name: Mmf-saga soil erosion model
+ID: sagang:modifedquadraticshepard | Name: Modifed quadratic shepard
+ID: sagang:monthlyglobalbylatitude | Name: Monthly global by latitude
+ID: sagang:morphologicalfilter | Name: Morphological filter
+ID: sagang:morphologicalfilteropencv | Name: Morphological filter (opencv)
+ID: sagang:morphologicalfiltervigra | Name: Morphological filter (vigra)
+ID: sagang:morphometricfeatures | Name: Morphometric features
+ID: sagang:morphometricprotectionindex | Name: Morphometric protection index
+ID: sagang:mosaicking | Name: Mosaicking
+ID: sagang:multibandvariation | Name: Multi-band variation
+ID: sagang:multidirectionleefilter | Name: Multi direction lee filter
+ID: sagang:multilevelbspline | Name: Multilevel b-spline
+ID: sagang:multilevelbsplineforcategories | Name: Multilevel b-spline for categories
+ID: sagang:multilevelbsplinefromgridpoints | Name: Multilevel b-spline from grid points
+ID: sagang:multiplelinearregressionanalysisshapes | Name: Multiple linear regression analysis (shapes)
+ID: sagang:multiplelinearregressionanalysistable | Name: Multiple linear regression analysis (table)
+ID: sagang:multipleregressionanalysisgridandpredictorgrids | Name: Multiple regression analysis (grid and predictor grids)
+ID: sagang:multipleregressionanalysispointsandpredictorgrids | Name: Multiple regression analysis (points and predictor grids)
+ID: sagang:multiresolutionindexofvalleybottomflatnessmrvbf | Name: Multiresolution index of valley bottom flatness (mrvbf)
+ID: sagang:multiscaletopographicpositionindextpi | Name: Multi-scale topographic position index (tpi)
+ID: sagang:naturalneighbour | Name: Natural neighbour
+ID: sagang:nearestneighbour | Name: Nearest neighbour
+ID: sagang:normalbayesclassification | Name: Normal bayes classification
+ID: sagang:notchfilterforgrids | Name: Notch filter for grids
+ID: sagang:objectbasedimagesegmentation | Name: Object based image segmentation
+ID: sagang:objectenumeration | Name: Object enumeration
+ID: sagang:ordinarykriging | Name: Ordinary kriging
+ID: sagang:overlandflow | Name: Overland flow
+ID: sagang:overlandflowdistancetochannelnetwork | Name: Overland flow distance to channel network
+ID: sagang:overlandflowkinematicwave | Name: Overland flow (kinematic wave)
+ID: sagang:patching | Name: Patching
+ID: sagang:patternanalysis | Name: Pattern analysis
+ID: sagang:phenipsgridsannual | Name: Phenips (grids, annual)
+ID: sagang:phenipsgridsdays | Name: Phenips (grids, days)
+ID: sagang:phenipstable | Name: Phenips (table)
+ID: sagang:pointcloudattributecalculator | Name: Point cloud attribute calculator
+ID: sagang:pointcloudfromgridpoints | Name: Point cloud from grid points
+ID: sagang:pointcloudfromshapes | Name: Point cloud from shapes
+ID: sagang:pointcloudfromtable | Name: Point cloud from table
+ID: sagang:pointcloudthinningsimple | Name: Point cloud thinning (simple)
+ID: sagang:pointcloudtoshapes | Name: Point cloud to shapes
+ID: sagang:pointsfilter | Name: Points filter
+ID: sagang:pointstatisticsforpolygons | Name: Point statistics for polygons
+ID: sagang:pointthinning | Name: Point thinning
+ID: sagang:pointtolinedistances | Name: Point to line distances
+ID: sagang:pointtopointdistances | Name: Point to point distances
+ID: sagang:polartocartesiancoordinates | Name: Polar to cartesian coordinates
+ID: sagang:polygoncategoriestogrid | Name: Polygon categories to grid
+ID: sagang:polygoncentroids | Name: Polygon centroids
+ID: sagang:polygonclipping | Name: Polygon clipping
+ID: sagang:polygondissolve | Name: Polygon dissolve
+ID: sagang:polygongeneralization | Name: Polygon generalization
+ID: sagang:polygonidentity | Name: Polygon identity
+ID: sagang:polygonlineintersection | Name: Polygon-line intersection
+ID: sagang:polygonpartstoseparatepolygons | Name: Polygon parts to separate polygons
+ID: sagang:polygonproperties | Name: Polygon properties
+ID: sagang:polygonselfintersection | Name: Polygon self-intersection
+ID: sagang:polygonshapeindices | Name: Polygon shape indices
+ID: sagang:polygonstoedgesandnodes | Name: Polygons to edges and nodes
+ID: sagang:polygonstogrid | Name: Polygons to grid
+ID: sagang:polygonunion | Name: Polygon union
+ID: sagang:polygonupdate | Name: Polygon update
+ID: sagang:polynomialregression | Name: Polynomial regression
+ID: sagang:populatepolygonswithpoints | Name: Populate polygons with points
+ID: sagang:potentialincomingsolarradiation | Name: Potential incoming solar radiation
+ID: sagang:principalcomponentanalysis | Name: Principal component analysis
+ID: sagang:principalcomponentbasedimagesharpening | Name: Principal component based image sharpening
+ID: sagang:profilefrompoints | Name: Profile from points
+ID: sagang:profilesfromlines | Name: Profiles from lines
+ID: sagang:proximityraster | Name: Proximity raster
+ID: sagang:quadtreestructuretopolygons | Name: Quadtree structure to polygons
+ID: sagang:quasidynamicflowaccumulation | Name: Quasi-dynamic flow accumulation
+ID: sagang:radiusofvarianceraster | Name: Radius of variance (raster)
+ID: sagang:randomfield | Name: Random field
+ID: sagang:randomforestclassification | Name: Random forest classification
+ID: sagang:randomforestclassificationvigra | Name: Random forest classification (vigra)
+ID: sagang:randomforestpresencepredictionvigra | Name: Random forest presence prediction (vigra)
+ID: sagang:randomforesttableclassificationvigra | Name: Random forest table classification (vigra)
+ID: sagang:randomterrain | Name: Random terrain
+ID: sagang:rankfilter | Name: Rank filter
+ID: sagang:raosqdiversityindex | Name: Rao's q diversity index
+ID: sagang:raosqdiversityindexclassic | Name: Rao's q diversity index (classic)
+ID: sagang:rasterbuffer | Name: Raster buffer
+ID: sagang:rastercellindex | Name: Raster cell index
+ID: sagang:rasterdifference | Name: Raster difference
+ID: sagang:rasterdivision | Name: Raster division
+ID: sagang:rasterize | Name: Rasterize
+ID: sagang:rastermasking | Name: Raster masking
+ID: sagang:rasterproduct | Name: Raster product
+ID: sagang:rasterproximitybuffer | Name: Raster proximity buffer
+ID: sagang:rasterskeletonization | Name: Raster skeletonization
+ID: sagang:rasterssum | Name: Rasters sum
+ID: sagang:rasterstatisticsforpolygons | Name: Raster statistics for polygons
+ID: sagang:rastervaluestopoints | Name: Raster values to points
+ID: sagang:rastervaluestopointsrandomly | Name: Raster values to points (randomly)
+ID: sagang:rastervolume | Name: Raster volume
+ID: sagang:realsurfacearea | Name: Real surface area
+ID: sagang:regressionanalysispointsandpredictorgrid | Name: Regression analysis (points and predictor grid)
+ID: sagang:regressionkriging | Name: Regression kriging
+ID: sagang:relativeheightsandslopepositions | Name: Relative heights and slope positions
+ID: sagang:reliefsegmentation | Name: Relief segmentation
+ID: sagang:removeboundarypolygons | Name: Remove boundary polygons
+ID: sagang:removeduplicatepoints | Name: Remove duplicate points
+ID: sagang:removeinvalidshapes | Name: Remove invalid shapes
+ID: sagang:removeoverlapfromvirtualpointcloudtiles | Name: Remove overlap from virtual point cloud tiles
+ID: sagang:removesmallpixelclumpstonodata | Name: Remove small pixel clumps (to no-data)
+ID: sagang:representativenessgrid | Name: Representativeness (grid)
+ID: sagang:resampling | Name: Resampling
+ID: sagang:resamplingfilter | Name: Resampling filter
+ID: sagang:resectionterrestrial | Name: Resection (terrestrial)
+ID: sagang:riverbasin | Name: Riverbasin
+ID: sagang:rivergridgeneration | Name: Rivergridgeneration
+ID: sagang:rotatedtoregulargrid | Name: Rotated to regular grid
+ID: sagang:safetyfactor | Name: Safetyfactor
+ID: sagang:sagawetnessindex | Name: Saga wetness index
+ID: sagang:salem | Name: Salem
+ID: sagang:savegridstatisticstotable | Name: Save grid statistics to table
+ID: sagang:seededregiongrowing | Name: Seeded region growing
+ID: sagang:seedgeneration | Name: Seed generation
+ID: sagang:selectanddelete | Name: Select and delete
+ID: sagang:selectbyattributesstringexpression | Name: Select by attributes... (string expression)
+ID: sagang:selectbylocation | Name: Select by location...
+ID: sagang:selectgridfromlist | Name: Select grid from list
+ID: sagang:selectpointcloudfromlist | Name: Select point cloud from list
+ID: sagang:selectshapesfromlist | Name: Select shapes from list
+ID: sagang:separatepointsbydirection | Name: Separate points by direction
+ID: sagang:setcoordinatereferencesystem | Name: Set coordinate reference system
+ID: sagang:shalstab | Name: Shalstab
+ID: sagang:shannonindex | Name: Shannon index
+ID: sagang:shapesbuffer | Name: Shapes buffer
+ID: sagang:sharedpolygonedges | Name: Shared polygon edges
+ID: sagang:sharpeningfilter | Name: Sharpening filter
+ID: sagang:shrinkandexpand | Name: Shrink and expand
+ID: sagang:sieveandclump | Name: Sieve and clump
+ID: sagang:sieveclasses | Name: Sieve classes
+ID: sagang:simplefilter | Name: Simple filter
+ID: sagang:simplefilterformultiplegrids | Name: Simple filter for multiple grids
+ID: sagang:simplefilterrestrictedtopolygons | Name: Simple filter (restricted to polygons)
+ID: sagang:simplekriging | Name: Simple kriging
+ID: sagang:simpsonindex | Name: Simpson index
+ID: sagang:simulation | Name: Simulation
+ID: sagang:singlecoordinatetransformation | Name: Single coordinate transformation
+ID: sagang:singlevaluedecompositionopencv | Name: Single value decomposition (opencv)
+ID: sagang:sinkdrainageroutedetection | Name: Sink drainage route detection
+ID: sagang:sinkremoval | Name: Sink removal
+ID: sagang:skyviewfactor | Name: Sky view factor
+ID: sagang:slopeaspectcurvature | Name: Slope, aspect, curvature
+ID: sagang:slopelength | Name: Slope length
+ID: sagang:slopelimitedflowaccumulation | Name: Slope limited flow accumulation
+ID: sagang:smoothingvigra | Name: Smoothing (vigra)
+ID: sagang:snappointstogrid | Name: Snap points to grid
+ID: sagang:snappointstolines | Name: Snap points to lines
+ID: sagang:snappointstopoints | Name: Snap points to points
+ID: sagang:snappointstopolygons | Name: Snap points to polygons
+ID: sagang:snowcover | Name: Snow cover
+ID: sagang:soilwaterbalancedays | Name: Soil water balance (days)
+ID: sagang:spatialpointpatternanalysis | Name: Spatial point pattern analysis
+ID: sagang:spectralprofile | Name: Spectral profile
+ID: sagang:splitlines | Name: Split lines
+ID: sagang:splitlinesatpoints | Name: Split lines at points
+ID: sagang:splitlineswithlines | Name: Split lines with lines
+ID: sagang:splitrgbbands | Name: Split RGB bands
+ID: sagang:splitshapeslayer | Name: Split shapes layer
+ID: sagang:splitshapeslayercompletely | Name: Split shapes layer completely
+ID: sagang:splitshapeslayerrandomly | Name: Split shapes layer randomly
+ID: sagang:splittableshapesbyattribute | Name: Split table/shapes by attribute
+ID: sagang:statisticsforrasters | Name: Statistics for rasters
+ID: sagang:stereomatchopencv | Name: Stereo match (opencv)
+ID: sagang:strahlerorder | Name: Strahler order
+ID: sagang:streampowerindex | Name: Stream power index
+ID: sagang:successiveflowrouting | Name: Successive flow routing
+ID: sagang:summitextraction | Name: Summit extraction
+ID: sagang:sunriseandsunset | Name: Sunrise and sunset
+ID: sagang:superpixelsegmentation | Name: Superpixel segmentation
+ID: sagang:supervisedimageclassification | Name: Supervised image classification
+ID: sagang:supervisedmajoritychoiceimageclassification | Name: Supervised majority choice image classification
+ID: sagang:supportvectormachineclassification | Name: Support vector machine classification
+ID: sagang:surfaceandgradient | Name: Surface and gradient
+ID: sagang:surfacegradientandconcentration | Name: Surface, gradient and concentration
+ID: sagang:surfacespecificpoints | Name: Surface specific points
+ID: sagang:svmclassification | Name: Svm classification
+ID: sagang:symmetricaldifference | Name: Symmetrical difference
+ID: sagang:tasseledcaptransformation | Name: Tasseled cap transformation
+ID: sagang:tcilow | Name: Tci low
+ID: sagang:temperaturelapserates | Name: Temperature lapse rates
+ID: sagang:terrainclustering | Name: Terrain clustering
+ID: sagang:terrainflooding | Name: Terrain flooding
+ID: sagang:terrainruggednessindextri | Name: Terrain ruggedness index (tri)
+ID: sagang:terrainsurfaceclassificationiwahashiandpike | Name: Terrain surface classification (iwahashi and pike)
+ID: sagang:terrainsurfaceconvexity | Name: Terrain surface convexity
+ID: sagang:terrainsurfacetexture | Name: Terrain surface texture
+ID: sagang:texturalfeatures | Name: Textural features
+ID: sagang:thermicbeltclassification | Name: Thermic belt classification
+ID: sagang:thiessenpolygons | Name: Thiessen polygons
+ID: sagang:thinplatespline | Name: Thin plate spline
+ID: sagang:thinplatesplinetin | Name: Thin plate spline (tin)
+ID: sagang:thresholdrasterbuffer | Name: Threshold raster buffer
+ID: sagang:tiling | Name: Tiling
+ID: sagang:tissotsindicatrix | Name: Tissot's indicatrix
+ID: sagang:tobia | Name: Tobia
+ID: sagang:topmodel | Name: Topmodel
+ID: sagang:topofatmospherereflectance | Name: Top of atmosphere reflectance
+ID: sagang:topographiccorrection | Name: Topographic correction
+ID: sagang:topographicopenness | Name: Topographic openness
+ID: sagang:topographicpositionindextpi | Name: Topographic position index (tpi)
+ID: sagang:topographicwetnessindexonestep | Name: Topographic wetness index (one step)
+ID: sagang:topographicwetnessindextwi | Name: Topographic wetness index (twi)
+ID: sagang:tpibasedlandformclassification | Name: Tpi based landform classification
+ID: sagang:transectthroughpolygonshapefile | Name: Transect through polygon shapefile
+ID: sagang:transformpointcloud | Name: Transform point cloud
+ID: sagang:transformvectorlayer | Name: Transform vector layer
+ID: sagang:transposerasterlayers | Name: Transpose raster layers
+ID: sagang:traveltimecalculation | Name: Travel time calculation
+ID: sagang:treegrowthseason | Name: Tree growth season
+ID: sagang:trendanalysis | Name: Trend analysis
+ID: sagang:trendanalysisshapes | Name: Trend analysis (shapes)
+ID: sagang:triangulation | Name: Triangulation
+ID: sagang:uniquevaluestatisticsforgrids | Name: Unique value statistics for grids
+ID: sagang:universalimagequalityindex | Name: Universal image quality index
+ID: sagang:universalkriging | Name: Universal kriging
+ID: sagang:upslopeanddownslopecurvature | Name: Upslope and downslope curvature
+ID: sagang:upslopearea | Name: Upslope area
+ID: sagang:upslopeheightslopeaspect | Name: Upslope height, slope, aspect
+ID: sagang:userdefinedfilter | Name: User defined filter
+ID: sagang:utmprojectiongrid | Name: Utm projection (grid)
+ID: sagang:utmprojectiongridlist | Name: Utm projection (grid list)
+ID: sagang:utmprojectionshapes | Name: Utm projection (shapes)
+ID: sagang:utmprojectionshapeslist | Name: Utm projection (shapes list)
+ID: sagang:valleyandridgedetectiontophatapproach | Name: Valley and ridge detection (top hat approach)
+ID: sagang:valleydepth | Name: Valley depth
+ID: sagang:variogram | Name: Variogram
+ID: sagang:variogramcloud | Name: Variogram cloud
+ID: sagang:variogramdialog | Name: Variogram (dialog)
+ID: sagang:vectorizinggridclasses | Name: Vectorizing grid classes
+ID: sagang:vectorruggednessmeasurevrm | Name: Vector ruggedness measure (vrm)
+ID: sagang:vegetationindexdistancebased | Name: Vegetation index (distance based)
+ID: sagang:vegetationindexslopebased | Name: Vegetation index (slope based)
+ID: sagang:verticaldistancetochannelnetwork | Name: Vertical distance to channel network
+ID: sagang:visibilityanalysis | Name: Visibility analysis
+ID: sagang:warpingshapes | Name: Warping shapes
+ID: sagang:waterretentioncapacity | Name: Water retention capacity
+ID: sagang:watershedbasins | Name: Watershed basins
+ID: sagang:watershedbasinsextended | Name: Watershed basins (extended)
+ID: sagang:watershedimagesegmentation | Name: Watershed image segmentation
+ID: sagang:watershedsegmentationvigra | Name: Watershed segmentation (vigra)
+ID: sagang:wator | Name: Wa-tor
+ID: sagang:wedgefail | Name: Wedgefail
+ID: sagang:wetness | Name: Wetness
+ID: sagang:windeffectcorrection | Name: Wind effect correction
+ID: sagang:windeffectwindwardleewardindex | Name: Wind effect (windward / leeward index)
+ID: sagang:windexpositionindex | Name: Wind exposition index
+ID: sagang:windshelterindex | Name: Wind shelter index
+ID: sagang:womblingedgedetection | Name: Wombling (edge detection)
+ID: sagang:womblingformultiplefeaturesedgedetection | Name: Wombling for multiple features (edge detection)
+ID: sagang:worldfilefromflightandcamerasettings | Name: World file from flight and camera settings
+ID: sagang:zonalmultipleregressionanalysispointsandpredictorgrids | Name: Zonal multiple regression analysis (points and predictor grids)
+ID: sagang:zonalrasterstatistics | Name: Zonal raster statistics

@@ -1,2 +1,9 @@
 openai
 requests
+google-generativeai
+pandas
+plotly
+kaleido
+pyarrow
+chardet
+shapely
