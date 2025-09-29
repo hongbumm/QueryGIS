@@ -455,10 +455,6 @@ class QueryGIS(QObject):
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
             self.ui.text_query.installEventFilter(self)
-            self.ui.status_label.setStyleSheet(
-                f"background-color: {self.default_status_color}; color: black;"
-            )
-
             self.ui.chk_ask_run.setChecked(True)
             self.toggle_ask_run()
 
@@ -466,7 +462,7 @@ class QueryGIS(QObject):
             if saved_api_key:
                 self.ui.line_apikey.setText(saved_api_key)
 
-            self.ui.chk_reason.setVisible(False)
+            self.ui.chk_reason.setVisible(True)
             self.ui.chk_rag.setVisible(False)
 
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
@@ -572,15 +568,8 @@ class QueryGIS(QObject):
             label.setWordWrap(True)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             label.setStyleSheet(
-                "background-color: #1AC85C; "
-                "color: white; "
-                "border: none; "
-                "border-radius: 10px; "
-                "padding: 10px 12px; "
-                "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif; "
-                "font-size: 14px; "
-                "font-weight: normal; "
-                "line-height: 1.5;"
+                "background-color: #1AC85C; color: white; border: none; border-radius: 10px; "
+                "padding: 8px; font-family: '맑은 고딕'; font-size: 12px;"
             )
             layout.addStretch()
             layout.addWidget(label)
@@ -590,32 +579,11 @@ class QueryGIS(QObject):
             label.setWordWrap(True)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             label.setStyleSheet(
-                "background-color: #F5F5F5; "
-                "color: #2D2D2D; "
-                "border: 1px solid #E0E0E0; "
-                "border-radius: 10px; "
-                "padding: 10px 12px; "
-                "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif; "
-                "font-size: 14px; "
-                "font-weight: normal; "
-                "line-height: 1.5;"
+                "background-color: #D9D9D9; color: black; border: none; border-radius: 10px; "
+                "padding: 8px; font-style: italic;"
             )
             copy_btn = QPushButton("Copy")
-            copy_btn.setStyleSheet(
-                "QPushButton {"
-                "  background-color: #FFFFFF; "
-                "  border: 1px solid #D0D0D0; "
-                "  border-radius: 4px; "
-                "  padding: 4px 8px; "
-                "  font-size: 12px; "
-                "  color: #505050; "
-                "}"
-                "QPushButton:hover {"
-                "  background-color: #F8F8F8; "
-                "  border-color: #B0B0B0; "
-                "}"
-            )
-            copy_btn.setMaximumSize(50, 28)
+            copy_btn.setMaximumSize(40, 25)
             copy_btn.clicked.connect(lambda _, text=message: self.copy_to_clipboard(text))
             layout.addWidget(label)
             layout.addWidget(copy_btn)
@@ -625,78 +593,36 @@ class QueryGIS(QObject):
             text_edit = QTextEdit()
             text_edit.setPlainText(message)
             text_edit.setReadOnly(False)
-            
-            if sys.platform == "win32":
-                code_font = QFont("Consolas", 11)
-            elif sys.platform == "darwin":
-                code_font = QFont("SF Mono", 11)
-            else:
-                code_font = QFont("DejaVu Sans Mono", 11)
-            
-            text_edit.setFont(code_font)
-            
 
             text_edit.document().documentLayout().documentSizeChanged.connect(
                 lambda size, te=text_edit: te.setMinimumHeight(
-                    min(int(size.height()) + te.contentsMargins().top() + 
-                    te.contentsMargins().bottom() + 10, 400)
+                    int(size.height()) + te.contentsMargins().top() +
+                    te.contentsMargins().bottom() + 5
                 )
             )
             text_edit.setMinimumHeight(
-                min(int(text_edit.document().size().height()) + 
+                int(text_edit.document().size().height()) +
                 text_edit.contentsMargins().top() +
-                text_edit.contentsMargins().bottom() + 10, 400)
+                text_edit.contentsMargins().bottom() + 5
             )
-            
-            text_edit.setStyleSheet(
-                "QTextEdit {"
-                "  background-color: #F6F8FA; "
-                "  color: #24292E; "
-                "  border: 1px solid #D1D5DA; "
-                "  border-radius: 8px; "
-                "  padding: 12px; "
-                "  font-family: 'Consolas', 'SF Mono', 'DejaVu Sans Mono', 'Courier New', monospace; "
-                "  font-size: 13px; "
-                "  line-height: 1.45; "
-                "}"
-                "QTextEdit:focus {"
-                "  border-color: #0969DA; "
-                "  outline: none; "
-                "}"
-            )
-            text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
-            layout.addWidget(text_edit)
-            
-            button_style = """
-                QPushButton {
-                    background-color: #FFFFFF;
-                    border: 1px solid #D0D0D0;
-                    border-radius: 6px;
-                    padding: 5px 12px;
-                    font-size: 13px;
-                    font-weight: 500;
-                    color: #24292E;
-                }
-                QPushButton:hover {
-                    background-color: #F6F8FA;
-                    border-color: #8B949E;
-                }
-                QPushButton:pressed {
-                    background-color: #EBECEF;
-                }
-            """
-            
+            text_edit.setStyleSheet(
+                "QTextEdit {background-color: #D9D9D9; color: black; border: none; "
+                "border-radius: 10px; padding: 8px;}"
+            )
+            text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+            layout.addWidget(text_edit, 1)
+
             run_btn = QPushButton("Run")
-            run_btn.setStyleSheet(button_style.replace("#FFFFFF", "#0969DA").replace("#24292E", "#FFFFFF"))
-            run_btn.setMaximumSize(60, 32)
+            run_btn.setMaximumSize(40, 25)
             layout.addWidget(run_btn)
-            
+
             copy_btn = QPushButton("Copy")
-            copy_btn.setStyleSheet(button_style)
-            copy_btn.setMaximumSize(60, 32)
+            copy_btn.setMaximumSize(40, 25)
             layout.addWidget(copy_btn)
+
             layout.addStretch()
 
             run_btn.clicked.connect(
@@ -707,6 +633,11 @@ class QueryGIS(QObject):
             )
 
         return msg_widget
+    
+    def _extract_non_code_text(self, text: str) -> str:
+        import re
+        pattern = re.compile(r"```(?:python)?\s*([\s\S]*?)```", re.IGNORECASE)
+        return pattern.sub("", text).strip()
 
     def append_chat_message(self, role, message):
         if not self.ui:
@@ -771,40 +702,37 @@ class QueryGIS(QObject):
         return add_imports + raw_code
     
     def handle_response(self, response_text: str):
-        try:
-            if not self.ui:
-                return
-
-            display_text, code_blocks = self._parse_backend_response(response_text)
-
-            self.append_chat_message("assistant-print", display_text.strip())
-
-            should_run = False
             try:
-                should_run = bool(self.ui.chk_ask_run.isChecked())
-            except Exception:
-                pass
+                if not self.ui:
+                    return
 
-            if code_blocks:
-                if should_run:
-                    for idx, block in enumerate(code_blocks, start=1):
-                        self.start_wave_progress(f"Executing code block {idx}/{len(code_blocks)}")
-                        final_code = self._prepare_code_for_execution(block)
-                        self.run_code_string(final_code)
+                display_text, code_blocks = self._parse_backend_response(response_text)
+
+                try:
+                    should_run = bool(self.ui.chk_ask_run.isChecked())
+                except Exception:
+                    should_run = False
+
+                if code_blocks:
+                    filtered = [b.strip() for b in code_blocks if b and b.strip()]
+                    if filtered:
+                        chosen = filtered[-1]
+                        self.append_chat_message("assistant", chosen)
+                        if should_run:
+                            self.start_wave_progress("Executing code")
+                            final_code = self._prepare_code_for_execution(chosen)
+                            self.run_code_string(final_code)
                 else:
-                    for block in code_blocks:
-                        self.append_chat_message("assistant", block)
+                    self.append_chat_message("assistant-print", display_text.strip())
 
-            self.ui.status_label.setText("Response processed")
-            self.ui.status_label.setStyleSheet(
-                f"background-color: {self.success_status_color}; color: black;"
-            )
-
-        finally:
-            self.stop_wave_progress("Done")
-            if self.ui:
-                self.ui.btn_ask.setEnabled(True)
-
+                self.ui.status_label.setText("Response processed")
+                self.ui.status_label.setStyleSheet(
+                    f"background-color: {self.success_status_color}; color: black;"
+                )
+            finally:
+                self.stop_wave_progress("Done")
+                if self.ui:
+                    self.ui.btn_ask.setEnabled(True)
 
     def handle_error(self, error_message: str):
         try:
@@ -1212,7 +1140,7 @@ class QueryGIS(QObject):
                 self.worker.quit()
                 self.worker.wait(3000)
 
-            self.worker = BackendWorker(payload, backend_url="http://192.168.1.111:5001/chat", timeout_sec=120)
+            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
             self.worker.step_update.connect(self.update_wave_message)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
