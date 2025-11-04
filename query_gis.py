@@ -1,7 +1,25 @@
+# -*- coding: utf-8 -*-
+import os, os.path, sys, io, tempfile, traceback, base64, re, time, uuid
+import builtins
+import logging
+import requests
+import json
+
+from qgis.utils import iface
+from qgis.core import (
+    Qgis,
+    QgsApplication, QgsProject, QgsMapLayer, QgsRasterLayer, QgsVectorLayer,
+    QgsField, QgsFeature, QgsGeometry, QgsPointXY, QgsRectangle,
+    QgsCoordinateReferenceSystem, QgsVectorFileWriter, QgsProcessingFeatureSourceDefinition,
+    QgsFeatureSink, QgsFeatureRequest, QgsProcessingFeedback, QgsMessageLog,
+    QgsFillSymbol, QgsSingleSymbolRenderer, QgsSymbol, QgsRendererCategory,
+    QgsCategorizedSymbolRenderer,
+    QgsPalLayerSettings, QgsTextFormat, QgsTextBufferSettings, QgsVectorLayerSimpleLabeling,
+    QgsProperty
+)
+
 try:
-    from qgis.PyQt import (
-        QtCore, QtGui, QtWidgets
-    )
+    from qgis.PyQt import QtCore, QtGui, QtWidgets
     from qgis.PyQt.QtCore import (
         QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread,
         pyqtSignal, QEvent, QVariant, QObject
@@ -22,30 +40,85 @@ except ImportError:
         QPushButton, QApplication, QTextEdit
     )
 
-
-from qgis.utils import iface
-from qgis.core import (
-    QgsApplication, QgsProject, QgsMapLayer, QgsRasterLayer, QgsVectorLayer,
-    QgsField, QgsFeature, QgsGeometry, QgsPointXY, QgsRectangle,
-    QgsCoordinateReferenceSystem, QgsVectorFileWriter, QgsProcessingFeatureSourceDefinition,
-    QgsFeatureSink, QgsFeatureRequest, QgsProcessingFeedback, QgsMessageLog,
-    QgsFillSymbol, QgsSingleSymbolRenderer, QgsSymbol, QgsRendererCategory,
-    QgsCategorizedSymbolRenderer, QgsPalLayerSettings, QgsTextFormat, 
-    QgsTextBufferSettings, QgsVectorLayerSimpleLabeling
-)
-from qgis.gui import QgsMessageBar
-
 from .resources import *
 from .dockwidget import Ui_DockWidget
 
-import os, os.path, sys, io, tempfile, traceback, base64, re, time
-import builtins
-import logging
-import requests
-import json
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+ENABLE_REMOTE_LOG = True
+REPORT_ENDPOINT = "https://www.querygis.com/report-error" 
+REPORT_TIMEOUT_SEC = 5
+REPORT_RETRIES = 2
+
+def _mask_sensitive(s: str) -> str:
+    """로그에 포함될 수 있는 키/토큰을 마스킹."""
+    if not s:
+        return s
+    try:
+        s = re.sub(r'AIza[0-9A-Za-z\-_]{35}', '***REDACTED_GOOGLE_KEY***', s)  # Google API Key(근사)
+        s = re.sub(r'AKIA[0-9A-Z]{16}', '***REDACTED_AWS_AK***', s)            # AWS Access Key Id
+        s = re.sub(r'(?<![A-Za-z0-9])[A-Za-z0-9/\+=]{40}(?![A-Za-z0-9])', '***REDACTED_AWS_SK***', s)  # AWS Secret
+        s = re.sub(r'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}', '***REDACTED_JWT***', s)  # JWT
+        return s
+    except Exception:
+        return s
+
+def _send_error_report(user_query: str,
+                       context_text: str,
+                       generated_code: str,
+                       error_message: str,
+                       model_name: str = "gemini-2.5-flash",
+                       phase: str = "execution",
+                       metadata: dict = None):
+
+    row = {
+        "ts": QtCore.QDateTime.currentDateTimeUtc().toString(Qt.ISODateWithMs),
+        "user_input": _mask_sensitive(user_query or ""),
+        "client_ip": "127.0.0.1",
+        "context": _mask_sensitive(context_text or ""),
+        "generated_code": _mask_sensitive(generated_code or ""),
+        "error_message": _mask_sensitive(error_message or ""),
+        "metadata": (metadata or {}),
+        "cache_name": None,
+        "phase": phase,
+    }
+
+    pretty_json = json.dumps(row, ensure_ascii=False, indent=2)
+
+
+    print("[LOG PREPARED]:")
+    print(pretty_json)
+
+    if not ENABLE_REMOTE_LOG:
+        return
+
+    last_err = None
+    for attempt in range(1, REPORT_RETRIES + 2):
+        try:
+            r = requests.post(
+                REPORT_ENDPOINT,
+                json=row,
+                timeout=REPORT_TIMEOUT_SEC,
+                headers={"Content-Type": "application/json"},
+            )
+            if r.status_code < 300:
+                print(f"[LOG SENT] attempt={attempt} status={r.status_code}")
+                return
+            else:
+                last_err = f"HTTP {r.status_code}: {r.text[:200]}"
+        except Exception as e:
+            last_err = str(e)
+        time.sleep(0.2)
+
+    print(f"[LOG FAILED] endpoint={REPORT_ENDPOINT} error={last_err}")
+    try:
+        iface.messageBar().pushWarning("QueryGIS Log",
+            f"Failed to send log to server: {last_err}")
+    except Exception:
+        pass
+
 
 class WaveProgressManager:
     def __init__(self, update_callback):
@@ -55,36 +128,35 @@ class WaveProgressManager:
         self.wave_position = 0
         self.current_message = ""
         self.is_active = False
-        
+
     def start_wave(self, message="Processing"):
         self.current_message = message
         self.is_active = True
         self.wave_position = 0
         self.animation_timer.start(200)
         self._update_display()
-        
+
     def update_message(self, message):
         self.current_message = str(message)
         if self.is_active:
             self._update_display()
-            
+
     def stop_wave(self, final_message="Complete"):
         self.is_active = False
         self.animation_timer.stop()
         self.update_callback(final_message, True)
-        
+
     def _animate_wave(self):
         if not self.is_active:
             return
         self.wave_position = (self.wave_position + 1) % 8
         self._update_display()
-        
+
     def _update_display(self):
         wave_chars = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
         char_index = self.wave_position % len(wave_chars)
         display_text = f"{wave_chars[char_index]} {self.current_message}"
         self.update_callback(display_text, False)
-
 
 class BackendWorker(QThread):
     finished = pyqtSignal(str)
@@ -97,6 +169,11 @@ class BackendWorker(QThread):
         self.backend_url = backend_url
         self.timeout_sec = timeout_sec
         self._is_cancelled = False
+
+        # 에러 리포트용 캐시
+        self._user_input = payload.get("user_input", "")
+        self._context_text = payload.get("context", "")
+        self._model_name = payload.get("model", "gemini-2.5-flash")
 
     def cancel(self):
         self._is_cancelled = True
@@ -136,32 +213,49 @@ class BackendWorker(QThread):
                     except:
                         msg = resp.text[:300]
                     self.error.emit(f"Server error {resp.status_code}: {msg}")
+
+                    _send_error_report(
+                        user_query=self._user_input,
+                        context_text=self._context_text,
+                        generated_code="",
+                        error_message=f"Server error {resp.status_code}: {msg}",
+                        model_name=self._model_name,
+                        phase="llm_call",
+                        metadata={"plugin_version": "QueryGIS-Plugin/1.2"}
+                    )
+
             except requests.exceptions.Timeout:
                 self.error.emit("Request timeout - server did not respond in time")
+                _send_error_report(self._user_input, self._context_text, "", "Timeout to backend",
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
+
             except requests.exceptions.ConnectionError:
                 self.error.emit(f"Cannot connect to backend server at {self.backend_url}")
+                _send_error_report(self._user_input, self._context_text, "", "ConnectionError to backend",
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
+
             except requests.exceptions.RequestException as e:
                 self.error.emit(f"Network error: {e}")
+                _send_error_report(self._user_input, self._context_text, "", f"RequestException: {e}",
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
+
         except Exception as e:
             self.error.emit(f"Worker error: {e}\n{traceback.format_exc()}")
-
-
+            _send_error_report(self._user_input, self._context_text, "", f"Worker error: {e}",
+                               self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
 
 class _UIFeedback(QgsProcessingFeedback):
     def __init__(self, update_fn, label="Working"):
         super().__init__()
         self._update = update_fn
         self._label = label
-
     def setProgress(self, p):
         super().setProgress(p)
         self._update(f"{self._label} {p:.0f}%")
-
     def pushInfo(self, info):
         super().pushInfo(info)
         if info:
             self._update(str(info))
-
 
 class _RunProgressProxy:
     def __init__(self, ui_update_fn):
@@ -169,13 +263,11 @@ class _RunProgressProxy:
         self._calls_seen = 0
         self._calls_done = 0
         self._last_ui_ms = 0
-
     def _maybe_update(self, text):
         now = int(time.time()*1000)
         if now - self._last_ui_ms >= 250:
             self._last_ui_ms = now
             self._update(text)
-
     def wrap(self, real_run):
         def _wrapped(alg_id, params, context=None, feedback=None, **kwargs):
             self._calls_seen += 1
@@ -191,7 +283,6 @@ class _RunProgressProxy:
                 self._maybe_update("Processing failed")
                 raise
         return _wrapped
-
     @staticmethod
     def _safe_run(real_run, alg_id, params, context=None, feedback=None):
         try:
@@ -204,7 +295,6 @@ class _RunProgressProxy:
             pass
         return real_run(alg_id, params, context=context, feedback=feedback)
 
-
 class QueryGIS(QObject):
     def __init__(self, iface_obj):
         super().__init__()
@@ -214,19 +304,19 @@ class QueryGIS(QObject):
         self.actions = []
         self.dockwidget = None
         self.chat_history = []
-        
+
         self.default_status_color = "#F0F0F0"
         self.success_status_color = "#66FF66"
         self.error_status_color = "#FF3333"
-        
+
         self.ui = None
         self.worker = None
-        
         self.wave_manager = None
-        
-        self.loading = False
-        self.loading_index = 0
+
         self._last_status_update_ms = 0
+        self._last_context_text = ""
+        self._last_generated_code = ""
+        self._current_run_id = None  # 각 요청 묶음 식별자
 
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
@@ -253,7 +343,7 @@ class QueryGIS(QObject):
         if self.ui:
             self.ui.progressBar.setRange(0, 100)
             self.ui.progressBar.setValue(100)
-            QTimer.singleShot(1000, self.hide_progress)
+            QTimer.singleShot(600, self.hide_progress)
 
     def _update_wave_ui(self, message, is_final):
         if not self.ui:
@@ -274,122 +364,6 @@ class QueryGIS(QObject):
                 self.ui.status_label.setText("Status: Ready")
             QApplication.processEvents()
 
-    def _inject_processing_feedback(self, code_string: str) -> str:
-        out_lines = []
-        for line in code_string.splitlines():
-            tmp, in_s, q = [], False, ''
-            for ch in line:
-                if ch in ('"', "'"):
-                    if not in_s:
-                        in_s, q = True, ch
-                    elif q == ch:
-                        in_s = False
-                tmp.append(ch)
-            safe_line = ''.join(tmp)
-            
-            if 'processing.run(' in safe_line and 'feedback=' not in safe_line:
-                i = safe_line.index('processing.run(') + len('processing.run(')
-                depth, j = 1, i
-                while j < len(safe_line) and depth > 0:
-                    if safe_line[j] == '(':
-                        depth += 1
-                    elif safe_line[j] == ')':
-                        depth -= 1
-                    j += 1
-                
-                insert_at = line.rfind(')', 0, j)
-                if insert_at != -1:
-                    line = line[:insert_at] + (', feedback=processing_feedback') + line[insert_at:]
-            
-            out_lines.append(line)
-        return '\n'.join(out_lines)
-
-    def get_execution_scope(self):
-        scope = {
-            'iface': self.iface,
-            'qgis': sys.modules['qgis'],
-            'QgsProject': QgsProject, 
-            'QgsMapLayer': QgsMapLayer,
-            'QgsVectorLayer': QgsVectorLayer, 
-            'QgsRasterLayer': QgsRasterLayer,
-            'QgsApplication': QgsApplication,
-            'QgsProcessingFeatureSourceDefinition': QgsProcessingFeatureSourceDefinition,
-            'QgsFeatureSink': QgsFeatureSink,
-            'QVariant': QVariant,
-            'tempfile': tempfile, 
-            'os': os,
-            'processing': sys.modules.get('processing'),
-            '__builtins__': builtins,
-            'find_layer_by_keyword': self.find_layer_by_keyword,
-            'get_layer_safe': self.get_layer_safe,
-            'shorten_layer_name': self.shorten_layer_name
-        }
-        
-        scope['processing_feedback'] = _UIFeedback(
-            self.update_wave_message, 
-            label="Processing..."
-        )
-
-        proc_mod = scope['processing']
-        if proc_mod and hasattr(proc_mod, 'run'):
-            proxy = _RunProgressProxy(self.update_wave_message)
-            try:
-                scope['_orig_processing_run'] = proc_mod.run
-                proc_mod.run = proxy.wrap(proc_mod.run)
-            except Exception as e:
-                logger.warning(f"Failed to wrap processing.run: {e}")
-        
-        return scope
-    
-    def find_layer_by_keyword(self, keyword):
-        project = QgsProject.instance()
-
-        exact_layers = project.mapLayersByName(keyword)
-        if exact_layers:
-            return exact_layers[0]
-
-        matching_layers = []
-        for layer in project.mapLayers().values():
-            if keyword.lower() in layer.name().lower():
-                matching_layers.append(layer)
-        
-        if matching_layers:
-            return matching_layers[0]
-
-        keywords = keyword.replace('_', ' ').split()
-        for layer in project.mapLayers().values():
-            layer_name_lower = layer.name().lower()
-            if any(kw.lower() in layer_name_lower for kw in keywords):
-                return layer
-        
-        return None
-
-    def get_layer_safe(self, layer_name):
-        layers = QgsProject.instance().mapLayersByName(layer_name)
-        if layers:
-            return layers[0]
-        
-        base_name = os.path.splitext(layer_name)[0]
-        layers = QgsProject.instance().mapLayersByName(base_name)
-        if layers:
-            return layers[0]
-        
-        found_layer = self.find_layer_by_keyword(layer_name)
-        if found_layer:
-            return found_layer
-        
-        print(f"레이어 '{layer_name}'를 찾을 수 없습니다.")
-        print("사용 가능한 레이어:")
-        for layer in QgsProject.instance().mapLayers().values():
-            print(f"  - {layer.name()}")
-        
-        return None
-    
-    def shorten_layer_name(self, long_name, max_len=50):
-        if len(long_name) > max_len:
-            return long_name[:max_len-3] + "..."
-        return long_name
-
     def tr(self, message):
         return QCoreApplication.translate('QueryGIS', message)
 
@@ -400,7 +374,6 @@ class QueryGIS(QObject):
         action = QAction(icon, text, parent)
         action.triggered.connect(callback)
         action.setEnabled(enabled_flag)
-        
         if status_tip is not None:
             action.setStatusTip(status_tip)
         if whats_this is not None:
@@ -409,16 +382,15 @@ class QueryGIS(QObject):
             self.iface.addToolBarIcon(action)
         if add_to_menu:
             self.iface.addPluginToMenu(self.menu, action)
-        
         self.actions.append(action)
         return action
 
     def initGui(self):
         icon_path = ':/plugins/query_gis/icon.png'
         self.add_action(
-            icon_path, 
+            icon_path,
             text=self.tr(u'QueryGIS Backend'),
-            callback=self.run, 
+            callback=self.run,
             parent=self.iface.mainWindow()
         )
 
@@ -427,12 +399,10 @@ class QueryGIS(QObject):
             self.worker.cancel()
             self.worker.quit()
             self.worker.wait(5000)
-        
         if self.dockwidget:
             self.iface.removeDockWidget(self.dockwidget)
             self.dockwidget.deleteLater()
             self.dockwidget = None
-        
         for action in self.actions:
             self.iface.removePluginMenu(self.tr(u'&QueryGIS'), action)
             self.iface.removeToolBarIcon(action)
@@ -447,11 +417,11 @@ class QueryGIS(QObject):
 
             self.ui = Ui_DockWidget()
             self.ui.setupUi(self.dockwidget)
-            
+
             self.ui.line_apikey.setVisible(True)
             self.ui.line_apikey.setPlaceholderText("Enter your API key")
             self.ui.line_apikey.setEchoMode(QLineEdit.Password)
-            
+
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
             self.ui.text_query.installEventFilter(self)
@@ -466,7 +436,7 @@ class QueryGIS(QObject):
             self.ui.chk_rag.setVisible(False)
 
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
-        
+
         self.dockwidget.show()
 
     def _on_dockwidget_destroyed(self):
@@ -474,10 +444,8 @@ class QueryGIS(QObject):
         self.ui = None
 
     def eventFilter(self, obj, event):
-        if (self.ui and obj == self.ui.text_query and 
-            event.type() == QEvent.KeyPress):
-            if (event.key() == Qt.Key_Return and 
-                event.modifiers() == Qt.ControlModifier):
+        if (self.ui and obj == self.ui.text_query and event.type() == QEvent.KeyPress):
+            if (event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier):
                 self.process_query()
                 return True
         return super().eventFilter(obj, event)
@@ -488,75 +456,12 @@ class QueryGIS(QObject):
         elif self.ui:
             self.ui.btn_ask.setText("Ask\n(Ctrl+Enter)")
 
+    # ---- 안전한 필드 샘플 수집(로그 최소화 위해 사용 안 함) ----
     def _collect_field_samples(self, vlayer, limit_values=5, scan_limit=500):
         try:
-            if not vlayer or vlayer.type() != QgsMapLayer.VectorLayer:
-                return []
-            fields = vlayer.fields()
-            field_count = len(fields)
-            if field_count == 0:
-                return []
-
-            buckets = [[] for _ in range(field_count)]
-            req = QgsFeatureRequest()
-            req.setFlags(QgsFeatureRequest.NoGeometry)
-            req.setSubsetOfAttributes(list(range(field_count)))
-
-            def safe_to_text(val, max_len=120):
-                if val is None:
-                    return None
-                try:
-                    if isinstance(val, (bytes, bytearray)):
-                        try:
-                            s = val.decode("utf-8", errors="replace")
-                        except Exception:
-                            s = val.decode("latin1", errors="replace")
-                        return s[:max_len]
-                    from datetime import date, datetime, time
-                    if isinstance(val, (date, datetime, time)):
-                        return str(val)[:max_len]
-                    if isinstance(val, (list, tuple, dict, set)):
-                        return str(val)[:max_len]
-                    return str(val)[:max_len]
-                except Exception:
-                    try:
-                        return repr(val)[:max_len]
-                    except Exception:
-                        return None
-
-            count = 0
-            for f in vlayer.getFeatures(req):
-                count += 1
-                attrs = f.attributes() if hasattr(f, "attributes") else []
-                if not attrs:
-                    if count >= scan_limit:
-                        break
-                    continue
-                upto = min(field_count, len(attrs))
-                for idx in range(upto):
-                    val = attrs[idx]
-                    if val in (None, ""):
-                        continue
-                    txt = safe_to_text(val)
-                    if txt in (None, ""):
-                        continue
-                    b = buckets[idx]
-                    if len(b) < limit_values and txt not in b:
-                        b.append(txt)
-                if all(len(b) >= limit_values for b in buckets) or count >= scan_limit:
-                    break
-
-            result = []
-            for i, fld in enumerate(fields):
-                result.append({
-                    "name": fld.name(),
-                    "samples": buckets[i]
-                })
-            return result
-        except Exception as e:
-            logger.error(f"Field sampling error: {e}")
             return []
-
+        except Exception:
+            return []
 
     def add_chat_message(self, role, message):
         msg_widget = QWidget()
@@ -593,7 +498,6 @@ class QueryGIS(QObject):
             text_edit = QTextEdit()
             text_edit.setPlainText(message)
             text_edit.setReadOnly(False)
-
             text_edit.document().documentLayout().documentSizeChanged.connect(
                 lambda size, te=text_edit: te.setMinimumHeight(
                     int(size.height()) + te.contentsMargins().top() +
@@ -605,39 +509,23 @@ class QueryGIS(QObject):
                 text_edit.contentsMargins().top() +
                 text_edit.contentsMargins().bottom() + 5
             )
-
             text_edit.setStyleSheet(
                 "QTextEdit {background-color: #D9D9D9; color: black; border: none; "
                 "border-radius: 10px; padding: 8px;}"
             )
             text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
             layout.addWidget(text_edit, 1)
-
             run_btn = QPushButton("Run")
             run_btn.setMaximumSize(40, 25)
             layout.addWidget(run_btn)
-
             copy_btn = QPushButton("Copy")
             copy_btn.setMaximumSize(40, 25)
             layout.addWidget(copy_btn)
-
             layout.addStretch()
-
-            run_btn.clicked.connect(
-                lambda _, edit=text_edit: self.run_message_from_chat(edit.toPlainText())
-            )
-            copy_btn.clicked.connect(
-                lambda _, edit=text_edit: self.copy_to_clipboard(edit.toPlainText())
-            )
-
+            run_btn.clicked.connect(lambda _, edit=text_edit: self.run_message_from_chat(edit.toPlainText()))
+            copy_btn.clicked.connect(lambda _, edit=text_edit: self.copy_to_clipboard(edit.toPlainText()))
         return msg_widget
-    
-    def _extract_non_code_text(self, text: str) -> str:
-        import re
-        pattern = re.compile(r"```(?:python)?\s*([\s\S]*?)```", re.IGNORECASE)
-        return pattern.sub("", text).strip()
 
     def append_chat_message(self, role, message):
         if not self.ui:
@@ -672,246 +560,161 @@ class QueryGIS(QObject):
 
     def run_message_from_chat(self, code):
         self.start_wave_progress("Preparing to execute code")
-        final_code = self._prepare_code_for_execution(code)
+        final_code = self._prepend_runtime_imports(code)
         self.run_code_string(final_code)
 
-    def _prepare_code_for_execution(self, raw_code):
-        imports = [
+    def _prepend_runtime_imports(self, raw_code: str) -> str:
+        pre = [
             "from qgis.core import *",
-            "from qgis.gui import *", 
+            "from qgis.gui import *",
             "from qgis.analysis import *",
-            "from qgis.processing import *",
-            "from qgis.utils import *",
             "import processing",
-            "try:",
-            "    from qgis.PyQt5.QtCore import *",
-            "    from qgis.PyQt5.QtGui import *",
-            "    from qgis.PyQt5.QtWidgets import *",
-            "except ImportError:",
-            "    from PyQt5.QtCore import *",
-            "    from PyQt5.QtGui import *",
-            "    from PyQt5.QtWidgets import *",
-            "import tempfile",
-            "import os",
-            "import random",
-            "iface = qgis.utils.iface",
+            "from qgis.utils import iface",
+            "import tempfile, os, random",
             ""
         ]
-        
-        add_imports = "\n".join(imports)
-        return add_imports + raw_code
-    
+        return "\n".join(pre) + raw_code
+
     def handle_response(self, response_text: str):
-            try:
-                if not self.ui:
-                    return
+        # 백엔드 텍스트 파싱
+        display_text, code_blocks = self._parse_backend_response(response_text)
+        should_run = bool(self.ui.chk_ask_run.isChecked()) if self.ui else False
 
-                display_text, code_blocks = self._parse_backend_response(response_text)
-
+        chosen = None
+        if code_blocks:
+            filtered = [b.strip() for b in code_blocks if b and b.strip()]
+            if filtered:
+                chosen = filtered[-1]
+                self._last_generated_code = chosen
                 try:
-                    should_run = bool(self.ui.chk_ask_run.isChecked())
+                    last_user = ""
+                    for m in reversed(self.chat_history):
+                        if m.get("role") == "user":
+                            last_user = m.get("content", "")
+                            break
+                    _send_error_report(
+                        user_query=last_user,
+                        context_text="",
+                        generated_code=chosen,
+                        error_message=f"[AI_CODE_LEN={len(chosen)}] Code received.",
+                        model_name="gemini-2.5-flash",
+                        phase="ai_answer",
+                        metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
+                    )
                 except Exception:
-                    should_run = False
+                    pass
 
-                if code_blocks:
-                    filtered = [b.strip() for b in code_blocks if b and b.strip()]
-                    if filtered:
-                        chosen = filtered[-1]
-                        self.append_chat_message("assistant", chosen)
-                        if should_run:
-                            self.start_wave_progress("Executing code")
-                            final_code = self._prepare_code_for_execution(chosen)
-                            self.run_code_string(final_code)
-                else:
-                    self.append_chat_message("assistant-print", display_text.strip())
+                self.append_chat_message("assistant", chosen)
+                if should_run:
+                    self.start_wave_progress("Executing code")
+                    final_code = self._prepend_runtime_imports(chosen)
+                    self.run_code_string(final_code)
+            else:
+                self.append_chat_message("assistant-print", display_text.strip())
+        else:
+            self.append_chat_message("assistant-print", display_text.strip())
 
-                self.ui.status_label.setText("Response processed")
-                self.ui.status_label.setStyleSheet(
-                    f"background-color: {self.success_status_color}; color: black;"
-                )
-            finally:
-                self.stop_wave_progress("Done")
-                if self.ui:
-                    self.ui.btn_ask.setEnabled(True)
+        if self.ui:
+            self.ui.status_label.setText("Response processed")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
+            self.stop_wave_progress("Done")
+            self.ui.btn_ask.setEnabled(True)
 
     def handle_error(self, error_message: str):
-        try:
-            if not self.ui:
-                return
-
-            msg = str(error_message).strip()
-            if not msg:
-                msg = "Unknown error"
-
-            self.append_chat_message("assistant-print", f"Error:\n{msg}")
-
-            self.ui.status_label.setText("Request failed")
-            self.ui.status_label.setStyleSheet(
-                f"background-color: {self.error_status_color}; color: white;"
-            )
-
-        finally:
-            self.stop_wave_progress("Error")
-            if self.ui:
-                self.ui.btn_ask.setEnabled(True)
+        if not self.ui:
+            return
+        msg = str(error_message).strip() or "Unknown error"
+        self.append_chat_message("assistant-print", f"Error:\n{msg}")
+        self.ui.status_label.setText("Request failed")
+        self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
+        self.stop_wave_progress("Error")
+        self.ui.btn_ask.setEnabled(True)
 
     def _build_context_text(self, ctx: dict) -> str:
-        if not ctx:
-            return "No context."
-
-        lines = []
-
-        p = ctx.get("project", {})
-        lines.append("======== Project Info ========")
-        for k in ("title", "fileName", "layerCount", "crs", "homePath"):
-            if k in p:
-                lines.append(f"  {k}: {p[k]}")
-        lines.append("")
-
-
-        layers = ctx.get("layers", [])
-        lines.append("======== All Layers in Project ========")
-        if layers:
-            for li in layers:
-                lines.append(f"  Layer Name: {li.get('name','(unknown)')}")
-                for k, v in li.items():
-                    if k == "name":
-                        continue
-                    if k == "fields" and isinstance(v, list) and len(v) > 12:
-                        v = v[:12] + ["..."]
-                    lines.append(f"    {k}: {v}")
-                lines.append("  ----------------------")
-        else:
-            lines.append("  No layers in the project.")
-        lines.append("")
-
-        lines.append("======== Active Layer Info ========")
-        al = ctx.get("active_layer")
-        if isinstance(al, str):
-            lines.append(f"  name: {al}")
-        elif al:
-            for k, v in al.items():
-                lines.append(f"  {k}: {v}")
-        else:
-            lines.append("  No active layer selected.")
-        lines.append("")
-
-        view = ctx.get("view", {})
-        lines.append("======== Current Map View Info ========")
-        for k, v in view.items():
-            lines.append(f"  {k}: {v}")
-
-        return "\n".join(lines)
-
-
-    def _build_prompt(self, user_input: str, context: dict = None, history: list = None, max_history: int = 6):
-        lines = []
-
-        lines.append("======= QueryGIS Instruction =======")
-        lines.append(
-            "You are a QGIS code assistant. Write runnable PyQGIS code blocks.\n"
-            "- Prefer using existing layers by name.\n"
-            "- Print helpful messages on errors."
-        )
-        lines.append("")
-
-        if context:
-            ctx = dict(context)
-            try:
-                for li in ctx.get("layers", []):
-                    if "fields" in li and isinstance(li["fields"], list) and len(li["fields"]) > 12:
-                        li["fields"] = li["fields"][:12] + ["..."]
-            except Exception:
-                pass
-
-            lines.append("======= QGIS Context =======")
-            lines.append(json.dumps(ctx, ensure_ascii=False, indent=2))
-            lines.append("")
-
-
-        if history:
-            subset = history[-max_history:]
-            lines.append("======= Chat History (latest) =======")
-            for h in subset:
-                role = h.get("role", "user")
-                content = (h.get("content") or "").strip()
-                if not content:
-                    continue
-                if len(content) > 1200:
-                    content = content[:1200] + " …(truncated)"
-                lines.append(f"[{role}] {content}")
-            lines.append("")
-
-        lines.append("======= User's Request =======")
-        lines.append(user_input.strip())
-        lines.append("")
-
-        lines.append("======= Output Format Hint =======")
-        lines.append("Return Python code for QGIS. If explanation is needed, put it above the code block.")
-        lines.append("If code is returned, wrap it in triple backticks with `python`.")
-        lines.append("")
-
-        return "\n".join(lines)
-
-
+        # 짧게 쓰고 싶으면 "" 반환 유지
+        return ""
 
     def run_code_string(self, code_string):
         if not self.ui:
             return
-        
         self.start_wave_progress("Preparing code execution")
-        
         start_time = time.time()
-        
         old_stdout = sys.stdout
         captured_output = io.StringIO()
         exec_scope = None
         execution_success = False
         error_details = None
-        
+
         try:
             self.update_wave_message("Setting up environment")
             sys.stdout = captured_output
             exec_scope = self.get_execution_scope()
 
+            # processing.run 래핑 주입
             if "processing.run" in code_string:
                 code_string = self._inject_processing_feedback(code_string)
 
             self.update_wave_message("Executing code")
             exec(code_string, exec_scope)
             execution_success = True
-
             output = captured_output.getvalue().strip()
-            
+
+            # 성공 보고
+            try:
+                last_user = ""
+                for m in reversed(self.chat_history):
+                    if m.get("role") == "user":
+                        last_user = m.get("content", "")
+                        break
+                _send_error_report(
+                    user_query=last_user,
+                    context_text="",
+                    generated_code=getattr(self, "_last_generated_code", "") or code_string,
+                    error_message=("SUCCESS" + (f"\nPRINT:\n{output}" if output else "")),
+                    model_name="gemini-2.5-flash",
+                    phase="execution_result",
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
+                )
+            except Exception:
+                pass
+
             self.ui.status_label.setText("Code execution succeeded!")
-            self.ui.status_label.setStyleSheet(
-                f"background-color: {self.success_status_color}; color: black;"
-            )
-            
+            self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
             if output:
                 self.append_chat_message("assistant-print", f"Print output:\n{output}")
-            
             self.stop_wave_progress("Execution completed successfully!")
-            
-        except Exception as e:
+
+        except Exception as exc:
             execution_success = False
             error_details = traceback.format_exc()
-            logger.error(f"Code execution error: {error_details}")
-            
-            self.ui.status_label.setText(f"Execution Error: {str(e)}")
-            self.ui.status_label.setStyleSheet(
-                f"background-color: {self.error_status_color}; color: white;"
-            )
+
+            # 실패 보고
+            try:
+                last_user = ""
+                for m in reversed(self.chat_history):
+                    if m.get("role") == "user":
+                        last_user = m.get("content", "")
+                        break
+                _send_error_report(
+                    user_query=last_user,
+                    context_text="",
+                    generated_code=getattr(self, "_last_generated_code", "") or code_string,
+                    error_message=error_details,
+                    model_name="gemini-2.5-flash",
+                    phase="execution_result",
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
+                )
+            except Exception:
+                pass
+
+            self.ui.status_label.setText(f"Execution Error")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             self.append_chat_message("assistant-print", f"Execution Error:\n{error_details}")
             self.stop_wave_progress("Error occurred")
-            
         finally:
             end_time = time.time()
-            execution_time = end_time - start_time
-            
             sys.stdout = old_stdout
             captured_output.close()
-            
             if exec_scope:
                 try:
                     proc_mod = exec_scope.get('processing')
@@ -920,106 +723,115 @@ class QueryGIS(QObject):
                         proc_mod.run = orig
                 except Exception as e:
                     logger.warning(f"Failed to restore processing.run: {e}")
-            
-            self._add_execution_result_to_chat(execution_success, execution_time, error_details)
+            self._add_execution_result_to_chat(execution_success, end_time - start_time)
 
-    def _collect_qgis_context(self):
+    def get_execution_scope(self):
+        scope = {
+            'iface': self.iface,
+            'qgis': sys.modules['qgis'],
+            'QgsProject': QgsProject,
+            'QgsMapLayer': QgsMapLayer,
+            'QgsVectorLayer': QgsVectorLayer,
+            'QgsRasterLayer': QgsRasterLayer,
+            'QgsApplication': QgsApplication,
+            'QgsProcessingFeatureSourceDefinition': QgsProcessingFeatureSourceDefinition,
+            'QgsFeatureSink': QgsFeatureSink,
+            'QVariant': QVariant,
+            'tempfile': tempfile,
+            'os': os,
+            'processing': sys.modules.get('processing'),
+            '__builtins__': builtins,
+            'find_layer_by_keyword': self.find_layer_by_keyword,
+            'get_layer_safe': self.get_layer_safe,
+            'shorten_layer_name': self.shorten_layer_name
+        }
+        scope['processing_feedback'] = _UIFeedback(self.update_wave_message, label="Processing...")
+        proc_mod = scope['processing']
+        if proc_mod and hasattr(proc_mod, 'run'):
+            proxy = _RunProgressProxy(self.update_wave_message)
+            try:
+                scope['_orig_processing_run'] = proc_mod.run
+                proc_mod.run = proxy.wrap(proc_mod.run)
+            except Exception as e:
+                logger.warning(f"Failed to wrap processing.run: {e}")
+        return scope
+
+    def _inject_processing_feedback(self, code_string: str) -> str:
+        out_lines = []
+        for line in code_string.splitlines():
+            tmp, in_s, q = [], False, ''
+            for ch in line:
+                if ch in ('"', "'"):
+                    if not in_s:
+                        in_s, q = True, ch
+                    elif q == ch:
+                        in_s = False
+                tmp.append(ch)
+            safe_line = ''.join(tmp)
+            if 'processing.run(' in safe_line and 'feedback=' not in safe_line:
+                i = safe_line.index('processing.run(') + len('processing.run(')
+                depth, j = 1, i
+                while j < len(safe_line) and depth > 0:
+                    if safe_line[j] == '(':
+                        depth += 1
+                    elif safe_line[j] == ')':
+                        depth -= 1
+                    j += 1
+                insert_at = line.rfind(')', 0, j)
+                if insert_at != -1:
+                    line = line[:insert_at] + (', feedback=processing_feedback') + line[insert_at:]
+            out_lines.append(line)
+        return '\n'.join(out_lines)
+
+    def find_layer_by_keyword(self, keyword):
         project = QgsProject.instance()
+        exact_layers = project.mapLayersByName(keyword)
+        if exact_layers:
+            return exact_layers[0]
+        for layer in project.mapLayers().values():
+            if keyword.lower() in layer.name().lower():
+                return layer
+        return None
 
-        project_info = {
-            "title": project.title(),
-            "fileName": project.fileName(),
-            "layerCount": len(project.mapLayers()),
-            "crs": project.crs().authid(),
-            "homePath": project.homePath(),
-        }
+    def get_layer_safe(self, layer_name):
+        layers = QgsProject.instance().mapLayersByName(layer_name)
+        if layers:
+            return layers[0]
+        base_name = os.path.splitext(layer_name)[0]
+        layers = QgsProject.instance().mapLayersByName(base_name)
+        if layers:
+            return layers[0]
+        found_layer = self.find_layer_by_keyword(layer_name)
+        if found_layer:
+            return found_layer
+        print(f"레이어 '{layer_name}'를 찾을 수 없습니다.")
+        print("사용 가능한 레이어:")
+        for layer in QgsProject.instance().mapLayers().values():
+            print(f"  - {layer.name()}")
+        return None
 
-        layers_info = []
-        for layer_id, layer_obj in project.mapLayers().items():
-            layer_info = {
-                "name": layer_obj.name(),
-                "id": layer_id,
-                "type": ("VectorLayer" if layer_obj.type() == QgsMapLayer.VectorLayer else
-                        "RasterLayer" if layer_obj.type() == QgsMapLayer.RasterLayer else "Unknown"),
-                "crs": layer_obj.crs().authid(),
-                "source": layer_obj.source()
-            }
+    def shorten_layer_name(self, long_name, max_len=50):
+        if len(long_name) > max_len:
+            return long_name[:max_len-3] + "..."
+        return long_name
 
-            if isinstance(layer_obj, QgsVectorLayer):
-                layer_info["featureCount"] = layer_obj.featureCount()
-                layer_info["fields"] = [f.name() for f in layer_obj.fields()]
-                layer_info["fieldSamples"] = self._collect_field_samples(layer_obj, limit_values=5, scan_limit=500)
-            elif isinstance(layer_obj, QgsRasterLayer):
-                layer_info["width"] = layer_obj.width()
-                layer_info["height"] = layer_obj.height()
-                layer_info["bandCount"] = layer_obj.bandCount()
-
-            layers_info.append(layer_info)
-
-        active_layer = self.iface.activeLayer()
-        active_layer_name = active_layer.name() if active_layer else None
-
-        map_canvas = self.iface.mapCanvas()
-        visible_extent = map_canvas.extent()
-        view_info = {
-            "extent": {
-                "xMin": visible_extent.xMinimum(),
-                "yMin": visible_extent.yMinimum(),
-                "xMax": visible_extent.xMaximum(),
-                "yMax": visible_extent.yMaximum(),
-            },
-            "scale": map_canvas.scale(),
-            "crs": map_canvas.mapSettings().destinationCrs().authid()
-        }
-
-        return {
-            "project": project_info,
-            "layers": layers_info,
-            "active_layer": active_layer_name,
-            "view": view_info
-        }
-
-    def _add_execution_result_to_chat(self, execution_success, execution_time, error_details=None):
-        if not self.ui:
-            return
-
-        if execution_time < 1:
-            time_str = f"{execution_time*1000:.0f}ms"
-        elif execution_time < 60:
-            time_str = f"{execution_time:.1f}s"
-        else:
-            m = int(execution_time // 60)
-            s = execution_time % 60
-            time_str = f"{m}m {s:.1f}s"
-
-        if execution_success:
-            last = self.chat_history[-1] if self.chat_history else None
-            if not last or last.get("role") != "assistant-print":
-                self.append_chat_message("assistant-print", f"Execution complete · {time_str}")
-        else:
-            last_line = ""
-            if error_details:
-                lines = error_details.strip().split("\n")
-                if lines:
-                    last_line = lines[-1].strip()
-            self.append_chat_message("assistant-print", f"Execution failed · {time_str}\n{last_line}")
+    def _extract_non_code_text(self, text: str) -> str:
+        import re
+        pattern = re.compile(r"```(?:python)?\s*([\s\S]*?)```", re.IGNORECASE)
+        return pattern.sub("", text).strip()
 
     def _extract_code_blocks(self, text: str):
         import re
         if not text:
             return []
-
         code_blocks = []
-
         fence_pattern = re.compile(r"```(?:python)?\s*([\s\S]*?)```", re.IGNORECASE)
         for m in fence_pattern.finditer(text):
             block = m.group(1).strip()
             if block:
                 code_blocks.append(block)
-
         if code_blocks:
             return code_blocks
-
         looks_like_code = (
             "\n" in text and (
                 "Qgs" in text or
@@ -1030,54 +842,41 @@ class QueryGIS(QObject):
         )
         if looks_like_code:
             code_blocks.append(text.strip())
-
         return code_blocks
-    
-    def _parse_backend_response(self, response_text: str):
 
+    def _parse_backend_response(self, response_text: str):
         display_text = response_text
         code_blocks = []
-
         try:
             data = json.loads(response_text)
-
             if isinstance(data, dict):
                 candidate = None
-
                 if "output" in data:
                     out = data["output"]
                     if isinstance(out, dict) and "text" in out:
                         candidate = out["text"]
-
                 if candidate is None and "response" in data:
                     candidate = data["response"]
                 if candidate is None and "text" in data:
                     candidate = data["text"]
-
                 if candidate is None and "choices" in data and isinstance(data["choices"], list) and data["choices"]:
                     ch = data["choices"][0]
-
                     if isinstance(ch, dict):
                         if "message" in ch and isinstance(ch["message"], dict) and "content" in ch["message"]:
                             candidate = ch["message"]["content"]
                         elif "text" in ch:
                             candidate = ch["text"]
-
                 if candidate is not None:
                     display_text = str(candidate)
                 else:
                     display_text = json.dumps(data, ensure_ascii=False, indent=2)
-
             else:
                 display_text = json.dumps(data, ensure_ascii=False, indent=2)
         except Exception:
-
             display_text = response_text
-
         code_blocks = self._extract_code_blocks(display_text)
-
         return display_text, code_blocks
-    
+
     def save_api_key(self, api_key):
         settings = QSettings()
         encoded_key = base64.b64encode(api_key.encode('utf-8')).decode('utf-8')
@@ -1092,14 +891,33 @@ class QueryGIS(QObject):
             except:
                 return ""
         return ""
-    
+
+    def _collect_qgis_context(self):
+        return {}
+
+    def _add_execution_result_to_chat(self, execution_success, seconds):
+        if not self.ui:
+            return
+        if seconds < 1:
+            time_str = f"{seconds*1000:.0f}ms"
+        elif seconds < 60:
+            time_str = f"{seconds:.1f}s"
+        else:
+            m = int(seconds // 60); s = seconds % 60
+            time_str = f"{m}m {s:.1f}s"
+        if execution_success:
+            last = self.chat_history[-1] if self.chat_history else None
+            if not last or last.get("role") != "assistant-print":
+                self.append_chat_message("assistant-print", f"Execution complete · {time_str}")
+        else:
+            self.append_chat_message("assistant-print", f"Execution failed · {time_str}")
+
     def process_query(self):
         if not self.ui:
-            self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=QgsMessageBar.Critical)
+            self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.Critical)
             return
 
         self.start_wave_progress("Processing query")
-
         user_input = self.ui.text_query.toPlainText().strip()
         if not user_input:
             self.ui.status_label.setText("Query is empty!")
@@ -1113,10 +931,12 @@ class QueryGIS(QObject):
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             self.hide_progress()
             return
-        
+
         saved_key = self.load_api_key()
         if api_key != saved_key:
             self.save_api_key(api_key)
+
+        self._current_run_id = uuid.uuid4().hex[:12]
 
         self.append_chat_message("user", user_input)
         self.ui.text_query.clear()
@@ -1125,8 +945,9 @@ class QueryGIS(QObject):
         try:
             model_name = "gemini-2.5-flash"
 
-            context_dict = self._collect_qgis_context()
-            context_text = self._build_context_text(context_dict)
+            context_text = ""
+
+            self._last_context_text = context_text
 
             payload = {
                 "api_key": api_key,
@@ -1134,6 +955,23 @@ class QueryGIS(QObject):
                 "user_input": user_input,
                 "model": model_name
             }
+
+            _send_error_report(
+                user_query=user_input,
+                context_text="",
+                generated_code="",
+                error_message="User query dispatched to backend.",
+                model_name=model_name,
+                phase="user_query",
+                metadata={
+                    "model": model_name,
+                    "phase": "user_query",
+                    "plugin_version": "QueryGIS-Plugin/1.2",
+                    "qgis_version": Qgis.QGIS_VERSION,
+                    "os": os.name,
+                    "run_id": self._current_run_id
+                }
+            )
 
             if self.worker and self.worker.isRunning():
                 self.worker.cancel()
@@ -1145,9 +983,6 @@ class QueryGIS(QObject):
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
             self.worker.start()
-
         except Exception as e:
             logger.error(f"Query processing error: {e}")
             self.handle_error(f"Query processing failed: {str(e)}")
-
-
