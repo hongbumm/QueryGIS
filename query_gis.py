@@ -1,10 +1,9 @@
-import os, sys, io, tempfile, traceback, base64, re, time, uuid
+# -*- coding: utf-8 -*-
+import os, os.path, sys, io, tempfile, traceback, base64, re, time, uuid
 import builtins
 import logging
 import requests
 import json
-from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor
 
 from qgis.utils import iface
 from qgis.core import (
@@ -16,7 +15,7 @@ from qgis.core import (
     QgsFillSymbol, QgsSingleSymbolRenderer, QgsSymbol, QgsRendererCategory,
     QgsCategorizedSymbolRenderer,
     QgsPalLayerSettings, QgsTextFormat, QgsTextBufferSettings, QgsVectorLayerSimpleLabeling,
-    QgsProperty
+    QgsProperty, QgsWkbTypes
 )
 
 try:
@@ -41,23 +40,19 @@ except ImportError:
         QPushButton, QApplication, QTextEdit
     )
 
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
 from .resources import *
 from .dockwidget import Ui_DockWidget
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "https://www.querygis.com/report-error" 
+REPORT_ENDPOINT = "https://www.querygis.com/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
-
-
-def _truncate(s: str, limit: int = 200000) -> str:
-    if not isinstance(s, str):
-        return str(s)
-    return s if len(s) <= limit else (s[:limit] + "\n...[truncated]")
 
 
 def _mask_sensitive(s: str) -> str:
@@ -68,51 +63,37 @@ def _mask_sensitive(s: str) -> str:
         s = re.sub(r'AKIA[0-9A-Z]{16}', '***REDACTED_AWS_AK***', s)
         s = re.sub(r'(?<![A-Za-z0-9])[A-Za-z0-9/\+=]{40}(?![A-Za-z0-9])', '***REDACTED_AWS_SK***', s)
         s = re.sub(r'eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}', '***REDACTED_JWT***', s)
-        s = re.sub(r'3DL_QG_[A-Za-z0-9]{10,}', '***REDACTED_QUERYGIS_KEY***', s)
         return s
     except Exception:
         return s
 
 
-_error_report_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="error_report")
-
-
-def _send_error_report_async(user_query: str, context_text: str, 
-                              generated_code: str, error_message: str,
-                              model_name: str = "gemini-2.5-flash",
-                              phase: str = "execution", metadata: dict = None):
-    
-    def _do_send():
-        try:
-            _send_error_report(user_query, context_text, generated_code, 
-                             error_message, model_name, phase, metadata)
-        except Exception as e:
-            logger.error(f"Error report submission failed: {e}")
-    
-    _error_report_executor.submit(_do_send)
-
-
-def _send_error_report(user_query: str, context_text: str, 
-                       generated_code: str, error_message: str,
+def _send_error_report(user_query: str,
+                       context_text: str,
+                       generated_code: str,
+                       error_message: str,
                        model_name: str = "gemini-2.5-flash",
-                       phase: str = "execution", metadata: dict = None):
-    
+                       phase: str = "execution",
+                       metadata: dict = None):
     row = {
-        "ts": datetime.now(timezone.utc).isoformat(),
-        "user_input": _mask_sensitive(_truncate(user_query or "", 50000)),
-        "context": _mask_sensitive(_truncate(context_text or "", 50000)),
-        "generated_code": _mask_sensitive(_truncate(generated_code or "", 50000)),
-        "error_message": _mask_sensitive(_truncate(error_message or "", 20000)),
-        "metadata": (metadata or {}),
-        "phase": phase,
+        "ts": QtCore.QDateTime.currentDateTimeUtc().toString(Qt.ISODateWithMs),
+        "user_input": _mask_sensitive(user_query or ""),
         "client_ip": "127.0.0.1",
+        "context": _mask_sensitive(context_text or ""),
+        "generated_code": _mask_sensitive(generated_code or ""),
+        "error_message": _mask_sensitive(error_message or ""),
+        "metadata": (metadata or {}),
         "cache_name": None,
+        "phase": phase,
     }
-    
+
+    pretty_json = json.dumps(row, ensure_ascii=False, indent=2)
+    print("[LOG PREPARED]:")
+    print(pretty_json)
+
     if not ENABLE_REMOTE_LOG:
-        logger.debug("Remote logging disabled")
         return
-    
+
     last_err = None
     for attempt in range(1, REPORT_RETRIES + 2):
         try:
@@ -123,26 +104,23 @@ def _send_error_report(user_query: str, context_text: str,
                 headers={"Content-Type": "application/json"},
             )
             if r.status_code < 300:
-                logger.info(f"Error report sent successfully (attempt {attempt})")
+                print(f"[LOG SENT] attempt={attempt} status={r.status_code}")
                 return
             else:
-                last_err = f"HTTP {r.status_code}"
-        except requests.exceptions.Timeout:
-            last_err = "Timeout"
-        except requests.exceptions.ConnectionError:
-            last_err = "Connection failed"
+                last_err = f"HTTP {r.status_code}: {r.text[:200]}"
         except Exception as e:
             last_err = str(e)
-        
-        if attempt < REPORT_RETRIES + 1:
-            time.sleep(0.2 * attempt)
-    
-    logger.warning(f"Error report failed after {REPORT_RETRIES + 1} attempts: {last_err}")
+        time.sleep(0.2)
 
+    print(f"[LOG FAILED] endpoint={REPORT_ENDPOINT} error={last_err}")
+    try:
+        iface.messageBar().pushWarning("QueryGIS Log",
+            f"Failed to send log to server: {last_err}")
+    except Exception:
+        pass
 
 
 class WaveProgressManager:
-    
     def __init__(self, update_callback):
         self.update_callback = update_callback
         self.animation_timer = QTimer()
@@ -182,12 +160,32 @@ class WaveProgressManager:
 
 
 class BackendWorker(QThread):
-    
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
+    _session = None
 
-    def __init__(self, payload, backend_url="https://www.querygis.com/chat", timeout_sec=180):
+    @classmethod
+    def _get_session(cls):
+        if cls._session is None:
+            s = requests.Session()
+            retry = Retry(
+                total=2, connect=2, read=2,
+                backoff_factor=0.2,
+                status_forcelist=(502, 503, 504)
+            )
+            adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=retry)
+            s.mount("https://", adapter)
+            s.mount("http://", adapter)
+            s.headers.update({
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+                "Content-Type": "application/json"
+            })
+            cls._session = s
+        return cls._session
+
+    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -212,25 +210,21 @@ class BackendWorker(QThread):
 
             self.step_update.emit("Sending request to server")
             try:
-                resp = requests.post(
+                session = self._get_session()
+                resp = session.post(
                     self.backend_url,
                     json=self.payload,
-                    headers={"Content-Type": "application/json"},
-                    timeout=self.timeout_sec
+                    timeout=(3, self.timeout_sec)
                 )
-                
                 if resp.status_code == 200:
                     try:
                         data = resp.json()
                         if isinstance(data, dict):
-                            text = data.get("output", {}).get("text") if "output" in data else None
-                            if not text:
-                                text = data.get("response") or data.get("text") or json.dumps(data, ensure_ascii=False)
+                            text = data.get("response") or data.get("text") or json.dumps(data, ensure_ascii=False)
                         else:
                             text = json.dumps(data, ensure_ascii=False)
                     except Exception:
                         text = resp.text
-                    
                     self.step_update.emit("Processing response")
                     self.finished.emit(text)
                 else:
@@ -239,59 +233,47 @@ class BackendWorker(QThread):
                         msg = ejson.get("error") or ejson.get("message") or str(ejson)
                     except:
                         msg = resp.text[:300]
-                    
                     self.error.emit(f"Server error {resp.status_code}: {msg}")
-                    
-                    _send_error_report_async(
+
+                    _send_error_report(
                         user_query=self._user_input,
                         context_text=self._context_text,
                         generated_code="",
                         error_message=f"Server error {resp.status_code}: {msg}",
                         model_name=self._model_name,
                         phase="llm_call",
-                        metadata={"plugin_version": "QueryGIS-Plugin/1.3"}
+                        metadata={"plugin_version": "QueryGIS-Plugin/1.2"}
                     )
 
             except requests.exceptions.Timeout:
                 self.error.emit("Request timeout - server did not respond in time")
-                _send_error_report_async(
-                    self._user_input, self._context_text, "", "Timeout to backend",
-                    self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"}
-                )
+                _send_error_report(self._user_input, self._context_text, "", "Timeout to backend",
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
 
             except requests.exceptions.ConnectionError:
                 self.error.emit(f"Cannot connect to backend server at {self.backend_url}")
-                _send_error_report_async(
-                    self._user_input, self._context_text, "", "ConnectionError to backend",
-                    self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"}
-                )
+                _send_error_report(self._user_input, self._context_text, "", "ConnectionError to backend",
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
 
             except requests.exceptions.RequestException as e:
                 self.error.emit(f"Network error: {e}")
-                _send_error_report_async(
-                    self._user_input, self._context_text, "", f"RequestException: {e}",
-                    self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"}
-                )
+                _send_error_report(self._user_input, self._context_text, "", f"RequestException: {e}",
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
 
         except Exception as e:
             self.error.emit(f"Worker error: {e}\n{traceback.format_exc()}")
-            _send_error_report_async(
-                self._user_input, self._context_text, "", f"Worker error: {e}",
-                self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"}
-            )
+            _send_error_report(self._user_input, self._context_text, "", f"Worker error: {e}",
+                               self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
 
 
 class _UIFeedback(QgsProcessingFeedback):
-    
     def __init__(self, update_fn, label="Working"):
         super().__init__()
         self._update = update_fn
         self._label = label
-    
     def setProgress(self, p):
         super().setProgress(p)
         self._update(f"{self._label} {p:.0f}%")
-    
     def pushInfo(self, info):
         super().pushInfo(info)
         if info:
@@ -299,19 +281,16 @@ class _UIFeedback(QgsProcessingFeedback):
 
 
 class _RunProgressProxy:
-    
     def __init__(self, ui_update_fn):
         self._update = ui_update_fn
         self._calls_seen = 0
         self._calls_done = 0
         self._last_ui_ms = 0
-    
     def _maybe_update(self, text):
         now = int(time.time()*1000)
         if now - self._last_ui_ms >= 250:
             self._last_ui_ms = now
             self._update(text)
-    
     def wrap(self, real_run):
         def _wrapped(alg_id, params, context=None, feedback=None, **kwargs):
             self._calls_seen += 1
@@ -327,7 +306,6 @@ class _RunProgressProxy:
                 self._maybe_update("Processing failed")
                 raise
         return _wrapped
-    
     @staticmethod
     def _safe_run(real_run, alg_id, params, context=None, feedback=None):
         try:
@@ -340,8 +318,40 @@ class _RunProgressProxy:
             pass
         return real_run(alg_id, params, context=context, feedback=feedback)
 
+
+# =========================
+# NEW: exec 전용 QThread
+# =========================
+class ExecuteCodeThread(QThread):
+    finished_ok = pyqtSignal(str)      # print 출력
+    finished_err = pyqtSignal(str)     # traceback
+    step = pyqtSignal(str)
+
+    def __init__(self, code_string: str, get_scope_fn):
+        super().__init__()
+        self.code = code_string
+        self.get_scope_fn = get_scope_fn
+
+    def run(self):
+        old_stdout = sys.stdout
+        buf = io.StringIO()
+        try:
+            self.step.emit("Setting up execution env")
+            sys.stdout = buf
+            scope = self.get_scope_fn()
+            self.step.emit("Running generated code")
+            exec(self.code, scope)
+            out = buf.getvalue().strip()
+            self.finished_ok.emit(out if out else "")
+        except Exception:
+            tb = traceback.format_exc()
+            self.finished_err.emit(tb)
+        finally:
+            sys.stdout = old_stdout
+            buf.close()
+
+
 class QueryGIS(QObject):
-    
     def __init__(self, iface_obj):
         super().__init__()
         self.iface = iface_obj
@@ -363,6 +373,7 @@ class QueryGIS(QObject):
         self._last_context_text = ""
         self._last_generated_code = ""
         self._current_run_id = None
+        self._exec_thread = None
 
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
@@ -445,6 +456,9 @@ class QueryGIS(QObject):
             self.worker.cancel()
             self.worker.quit()
             self.worker.wait(5000)
+        if self._exec_thread and self._exec_thread.isRunning():
+            self._exec_thread.terminate()
+            self._exec_thread.wait(5000)
         if self.dockwidget:
             self.iface.removeDockWidget(self.dockwidget)
             self.dockwidget.deleteLater()
@@ -501,6 +515,12 @@ class QueryGIS(QObject):
             self.ui.btn_ask.setText("Ask and Run\n(Ctrl+Enter)")
         elif self.ui:
             self.ui.btn_ask.setText("Ask\n(Ctrl+Enter)")
+
+    def _collect_field_samples(self, vlayer, limit_values=5, scan_limit=500):
+        try:
+            return []
+        except Exception:
+            return []
 
     def add_chat_message(self, role, message):
         msg_widget = QWidget()
@@ -564,7 +584,6 @@ class QueryGIS(QObject):
             layout.addStretch()
             run_btn.clicked.connect(lambda _, edit=text_edit: self.run_message_from_chat(edit.toPlainText()))
             copy_btn.clicked.connect(lambda _, edit=text_edit: self.copy_to_clipboard(edit.toPlainText()))
-        
         return msg_widget
 
     def append_chat_message(self, role, message):
@@ -625,28 +644,25 @@ class QueryGIS(QObject):
             if filtered:
                 chosen = filtered[-1]
                 self._last_generated_code = chosen
-                
                 try:
                     last_user = ""
                     for m in reversed(self.chat_history):
                         if m.get("role") == "user":
                             last_user = m.get("content", "")
                             break
-                    
-                    _send_error_report_async(
+                    _send_error_report(
                         user_query=last_user,
                         context_text="",
                         generated_code=chosen,
                         error_message=f"[AI_CODE_LEN={len(chosen)}] Code received.",
                         model_name="gemini-2.5-flash",
                         phase="ai_answer",
-                        metadata={"plugin_version": "QueryGIS-Plugin/1.3", "run_id": self._current_run_id}
+                        metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
                     )
-                except Exception as e:
-                    logger.warning(f"Failed to send AI answer report: {e}")
+                except Exception:
+                    pass
 
                 self.append_chat_message("assistant", chosen)
-                
                 if should_run:
                     self.start_wave_progress("Executing code")
                     final_code = self._prepend_runtime_imports(chosen)
@@ -672,99 +688,88 @@ class QueryGIS(QObject):
         self.stop_wave_progress("Error")
         self.ui.btn_ask.setEnabled(True)
 
+    def _build_context_text(self, ctx: dict) -> str:
+        try:
+            trimmed = {"project": ctx.get("project", {}), "layers": []}
+            for li in ctx.get("layers", []):
+                li2 = dict(li)
+                if isinstance(li2.get("fields"), list) and len(li2["fields"]) > 20:
+                    li2["fields"] = li2["fields"][:20] + ["..."]
+                trimmed["layers"].append(li2)
+            return json.dumps(trimmed, ensure_ascii=False)
+        except Exception:
+            return ""
+        
     def run_code_string(self, code_string):
         if not self.ui:
             return
-        
+
         self.start_wave_progress("Preparing code execution")
-        start_time = time.time()
-        old_stdout = sys.stdout
-        captured_output = io.StringIO()
-        exec_scope = None
-        execution_success = False
-        error_details = None
 
-        try:
-            self.update_wave_message("Setting up environment")
-            sys.stdout = captured_output
-            exec_scope = self.get_execution_scope()
+        if "processing.run" in code_string:
+            code_string = self._inject_processing_feedback(code_string)
 
-            if "processing.run" in code_string:
-                code_string = self._inject_processing_feedback(code_string)
+        get_scope = self.get_execution_scope
 
-            self.update_wave_message("Executing code")
-            exec(code_string, exec_scope)
-            execution_success = True
-            output = captured_output.getvalue().strip()
+        self._exec_thread = ExecuteCodeThread(code_string, get_scope)
+        self._exec_thread.step.connect(self.update_wave_message)
 
-            # 성공 보고 (비동기)
+        def _on_ok(out_text: str):
             try:
                 last_user = ""
                 for m in reversed(self.chat_history):
                     if m.get("role") == "user":
                         last_user = m.get("content", "")
                         break
-                
-                _send_error_report_async(
+                _send_error_report(
                     user_query=last_user,
                     context_text="",
                     generated_code=getattr(self, "_last_generated_code", "") or code_string,
-                    error_message=("SUCCESS" + (f"\nPRINT:\n{output}" if output else "")),
+                    error_message=("SUCCESS" + (f"\nPRINT:\n{out_text}" if out_text else "")),
                     model_name="gemini-2.5-flash",
                     phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.3", "run_id": self._current_run_id}
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
                 )
-            except Exception as e:
-                logger.warning(f"Failed to send success report: {e}")
+            except Exception:
+                pass
 
             self.ui.status_label.setText("Code execution succeeded!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
-            if output:
-                self.append_chat_message("assistant-print", f"Print output:\n{output}")
+            if out_text:
+                self.append_chat_message("assistant-print", f"Print output:\n{out_text}")
             self.stop_wave_progress("Execution completed successfully!")
+            self._add_execution_result_to_chat(True, 0.0)
+            self._exec_thread = None
 
-        except Exception as exc:
-            execution_success = False
-            error_details = traceback.format_exc()
-
-            # 실패 보고 (비동기)
+        def _on_err(tb_text: str):
             try:
                 last_user = ""
                 for m in reversed(self.chat_history):
                     if m.get("role") == "user":
                         last_user = m.get("content", "")
                         break
-                
-                _send_error_report_async(
+                _send_error_report(
                     user_query=last_user,
                     context_text="",
                     generated_code=getattr(self, "_last_generated_code", "") or code_string,
-                    error_message=error_details,
+                    error_message=tb_text,
                     model_name="gemini-2.5-flash",
                     phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.3", "run_id": self._current_run_id}
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
                 )
-            except Exception as e:
-                logger.warning(f"Failed to send error report: {e}")
+            except Exception:
+                pass
 
-            self.ui.status_label.setText(f"Execution Error")
+            self.ui.status_label.setText("Execution Error")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            self.append_chat_message("assistant-print", f"Execution Error:\n{error_details}")
+            self.append_chat_message("assistant-print", f"Execution Error:\n{tb_text}")
             self.stop_wave_progress("Error occurred")
-        
-        finally:
-            end_time = time.time()
-            sys.stdout = old_stdout
-            captured_output.close()
-            if exec_scope:
-                try:
-                    proc_mod = exec_scope.get('processing')
-                    orig = exec_scope.get('_orig_processing_run')
-                    if proc_mod and orig:
-                        proc_mod.run = orig
-                except Exception as e:
-                    logger.warning(f"Failed to restore processing.run: {e}")
-            self._add_execution_result_to_chat(execution_success, end_time - start_time)
+            self._add_execution_result_to_chat(False, 0.0)
+            self._exec_thread = None
+
+        self._exec_thread.finished_ok.connect(_on_ok)
+        self._exec_thread.finished_err.connect(_on_err)
+        self._exec_thread.start()
 
     def get_execution_scope(self):
         scope = {
@@ -786,9 +791,7 @@ class QueryGIS(QObject):
             'get_layer_safe': self.get_layer_safe,
             'shorten_layer_name': self.shorten_layer_name
         }
-        
         scope['processing_feedback'] = _UIFeedback(self.update_wave_message, label="Processing...")
-        
         proc_mod = scope['processing']
         if proc_mod and hasattr(proc_mod, 'run'):
             proxy = _RunProgressProxy(self.update_wave_message)
@@ -797,7 +800,6 @@ class QueryGIS(QObject):
                 proc_mod.run = proxy.wrap(proc_mod.run)
             except Exception as e:
                 logger.warning(f"Failed to wrap processing.run: {e}")
-        
         return scope
 
     def _inject_processing_feedback(self, code_string: str) -> str:
@@ -829,29 +831,45 @@ class QueryGIS(QObject):
 
     def find_layer_by_keyword(self, keyword):
         project = QgsProject.instance()
+
         exact_layers = project.mapLayersByName(keyword)
         if exact_layers:
             return exact_layers[0]
+
+        matching_layers = []
         for layer in project.mapLayers().values():
             if keyword.lower() in layer.name().lower():
+                matching_layers.append(layer)
+        if matching_layers:
+            return matching_layers[0]
+
+        keywords = keyword.replace('_', ' ').split()
+        for layer in project.mapLayers().values():
+            layer_name_lower = layer.name().lower()
+            if any(kw.lower() in layer_name_lower for kw in keywords):
                 return layer
+
         return None
 
     def get_layer_safe(self, layer_name):
         layers = QgsProject.instance().mapLayersByName(layer_name)
         if layers:
             return layers[0]
+
         base_name = os.path.splitext(layer_name)[0]
         layers = QgsProject.instance().mapLayersByName(base_name)
         if layers:
             return layers[0]
+
         found_layer = self.find_layer_by_keyword(layer_name)
         if found_layer:
             return found_layer
+
         print(f"레이어 '{layer_name}'를 찾을 수 없습니다.")
         print("사용 가능한 레이어:")
         for layer in QgsProject.instance().mapLayers().values():
             print(f"  - {layer.name()}")
+
         return None
 
     def shorten_layer_name(self, long_name, max_len=50):
@@ -859,21 +877,23 @@ class QueryGIS(QObject):
             return long_name[:max_len-3] + "..."
         return long_name
 
+    def _extract_non_code_text(self, text: str) -> str:
+        import re
+        pattern = re.compile(r"```(?:python)?\s*([\s\S]*?)```", re.IGNORECASE)
+        return pattern.sub("", text).strip()
+
     def _extract_code_blocks(self, text: str):
+        import re
         if not text:
             return []
-        
         code_blocks = []
         fence_pattern = re.compile(r"```(?:python)?\s*([\s\S]*?)```", re.IGNORECASE)
-        
         for m in fence_pattern.finditer(text):
             block = m.group(1).strip()
             if block:
                 code_blocks.append(block)
-        
         if code_blocks:
             return code_blocks
-        
         looks_like_code = (
             "\n" in text and (
                 "Qgs" in text or
@@ -882,32 +902,25 @@ class QueryGIS(QObject):
                 text.lstrip().startswith(("try:", "import ", "from "))
             )
         )
-        
         if looks_like_code:
             code_blocks.append(text.strip())
-        
         return code_blocks
 
     def _parse_backend_response(self, response_text: str):
         display_text = response_text
         code_blocks = []
-        
         try:
             data = json.loads(response_text)
             if isinstance(data, dict):
                 candidate = None
-                
                 if "output" in data:
                     out = data["output"]
                     if isinstance(out, dict) and "text" in out:
                         candidate = out["text"]
-                
                 if candidate is None and "response" in data:
                     candidate = data["response"]
-                
                 if candidate is None and "text" in data:
                     candidate = data["text"]
-                
                 if candidate is None and "choices" in data and isinstance(data["choices"], list) and data["choices"]:
                     ch = data["choices"][0]
                     if isinstance(ch, dict):
@@ -915,17 +928,14 @@ class QueryGIS(QObject):
                             candidate = ch["message"]["content"]
                         elif "text" in ch:
                             candidate = ch["text"]
-                
                 if candidate is not None:
                     display_text = str(candidate)
                 else:
                     display_text = json.dumps(data, ensure_ascii=False, indent=2)
             else:
                 display_text = json.dumps(data, ensure_ascii=False, indent=2)
-        
         except Exception:
             display_text = response_text
-        
         code_blocks = self._extract_code_blocks(display_text)
         return display_text, code_blocks
 
@@ -944,19 +954,44 @@ class QueryGIS(QObject):
                 return ""
         return ""
 
+    def _collect_qgis_context(self):
+        p = QgsProject.instance()
+        layers_info = []
+        for lyr in p.mapLayers().values():
+            try:
+                info = {
+                    "name": lyr.name(),
+                    "type": ("vector" if lyr.type() == QgsMapLayer.VectorLayer
+                            else "raster" if lyr.type() == QgsMapLayer.RasterLayer
+                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
+                            else "unknown"),
+                    "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
+                }
+                if isinstance(lyr, QgsVectorLayer):
+                    info["geometry"] = QgsWkbTypes.displayString(lyr.wkbType())
+                    info["fields"] = [f.name() for f in lyr.fields()]
+                layers_info.append(info)
+            except Exception:
+                pass
+
+        return {
+            "project": {
+                "crs": p.crs().authid(),
+                "layerCount": len(layers_info),
+            },
+            "layers": layers_info
+        }
+
     def _add_execution_result_to_chat(self, execution_success, seconds):
         if not self.ui:
             return
-        
         if seconds < 1:
             time_str = f"{seconds*1000:.0f}ms"
         elif seconds < 60:
             time_str = f"{seconds:.1f}s"
         else:
-            m = int(seconds // 60)
-            s = seconds % 60
+            m = int(seconds // 60); s = seconds % 60
             time_str = f"{m}m {s:.1f}s"
-        
         if execution_success:
             last = self.chat_history[-1] if self.chat_history else None
             if not last or last.get("role") != "assistant-print":
@@ -971,7 +1006,6 @@ class QueryGIS(QObject):
 
         self.start_wave_progress("Processing query")
         user_input = self.ui.text_query.toPlainText().strip()
-        
         if not user_input:
             self.ui.status_label.setText("Query is empty!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
@@ -997,17 +1031,19 @@ class QueryGIS(QObject):
 
         try:
             model_name = "gemini-2.5-flash"
-            context_text = ""
+
+            context_dict = self._collect_qgis_context()
+            context_text = self._build_context_text(context_dict)
             self._last_context_text = context_text
 
             payload = {
                 "api_key": api_key,
                 "context": context_text,
                 "user_input": user_input,
-                "model": model_name
+                "model": "gemini-2.5-flash"
             }
 
-            _send_error_report_async(
+            _send_error_report(
                 user_query=user_input,
                 context_text="",
                 generated_code="",
@@ -1017,7 +1053,7 @@ class QueryGIS(QObject):
                 metadata={
                     "model": model_name,
                     "phase": "user_query",
-                    "plugin_version": "QueryGIS-Plugin/1.3",
+                    "plugin_version": "QueryGIS-Plugin/1.2",
                     "qgis_version": Qgis.QGIS_VERSION,
                     "os": os.name,
                     "run_id": self._current_run_id
@@ -1029,12 +1065,11 @@ class QueryGIS(QObject):
                 self.worker.quit()
                 self.worker.wait(3000)
 
-            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
+            self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
             self.worker.step_update.connect(self.update_wave_message)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
             self.worker.start()
-        
         except Exception as e:
             logger.error(f"Query processing error: {e}")
             self.handle_error(f"Query processing failed: {str(e)}")
