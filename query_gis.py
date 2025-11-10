@@ -185,7 +185,7 @@ class BackendWorker(QThread):
             cls._session = s
         return cls._session
 
-    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="https://www.querygis.com/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -1065,7 +1065,7 @@ class QueryGIS(QObject):
                 self.worker.quit()
                 self.worker.wait(3000)
 
-            self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
+            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
             self.worker.step_update.connect(self.update_wave_message)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
