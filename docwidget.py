@@ -161,7 +161,6 @@ class Ui_DockWidget(object):
         self.btn_ask.setText(_translate("DockWidget", "Ask\n"
 "(Ctrl + Enter)"))
         self.chk_ask_run.setText(_translate("DockWidget", "Ask and Run"))
-        self.chk_reason.setText(_translate("DockWidget", "Reasoning (Better, Slower)"))
         self.chk_rag.setText(_translate("DockWidget", "RAG(Better, Slower)"))
         self.status_label.setText(_translate("DockWidget", "Status: Waiting for your next command."))
 import resources_rc

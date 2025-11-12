@@ -473,7 +473,7 @@ class QueryGIS(QObject):
         icon_path = ':/plugins/query_gis/icon.png'
         self.add_action(
             icon_path,
-            text=self.tr(u'QueryGIS Backend'),
+            text=self.tr(u'QueryGIS'),
             callback=self.run,
             parent=self.iface.mainWindow()
         )

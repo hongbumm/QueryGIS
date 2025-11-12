@@ -140,8 +140,6 @@
 
 - Query를 입력하고 Ask (Ctrl + Enter) 버튼을 클릭합니다.
     - `Ask and Run` 기능이 기본으로 설정되어있습니다. 즉시 실행을 원하지 않는다면 해제해주십시오.
-    - `Reasoning (Better, Slower)` 선택 시 추론 모델인 o3-mini 로 동작됩니다.
-    - `RAG (Better, Slower)` 선택을 통해 더 정확하고 신뢰성 있는 답변을 받을 수 있습니다.
 
 
 <p align="center">

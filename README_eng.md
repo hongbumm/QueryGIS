@@ -145,8 +145,6 @@ Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later
 
 - Enter your query and click the Ask (Ctrl + Enter) button.
     - `Ask and Run` function is enabled by default. If you do not want immediate execution, please disable it.
-    - Selecting `Reasoning (Better, Slower)` will operate using the reasoning model, o3-mini.
-    - Choosing `RAG (Better, Slower)` allows you to receive more accurate and reliable responses.
 
 
 <p align="center">

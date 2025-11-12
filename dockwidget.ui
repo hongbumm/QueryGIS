@@ -192,13 +192,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {background:none; h
        </widget>
       </item>
       <item>
-       <widget class="QCheckBox" name="chk_reason">
-        <property name="text">
-         <string>Reasoning (Better, Slower)</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QCheckBox" name="chk_rag">
         <property name="text">
          <string>RAG(Better, Slower)</string>
