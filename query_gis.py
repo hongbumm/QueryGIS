@@ -74,7 +74,6 @@ def _send_error_report(user_query: str,
                        model_name: str = "gemini-2.5-flash",
                        phase: str = "execution",
                        metadata: dict = None,
-                       
                        query_gis_instance: 'QueryGIS' = None): 
 
     row = {
@@ -164,6 +163,7 @@ class WaveProgressManager:
         char_index = self.wave_position % len(wave_chars)
         display_text = f"{wave_chars[char_index]} {self.current_message}"
         self.update_callback(display_text, False)
+
 
 class LoggingWorker(QThread):
     def __init__(self, endpoint, json_data, timeout):
@@ -362,38 +362,6 @@ class _RunProgressProxy:
         return real_run(alg_id, params, context=context, feedback=feedback)
 
 
-# =========================
-# NEW: exec 전용 QThread
-# =========================
-class ExecuteCodeThread(QThread):
-    finished_ok = pyqtSignal(str)      # print 출력
-    finished_err = pyqtSignal(str)     # traceback
-    step = pyqtSignal(str)
-
-    def __init__(self, code_string: str, get_scope_fn):
-        super().__init__()
-        self.code = code_string
-        self.get_scope_fn = get_scope_fn
-
-    def run(self):
-        old_stdout = sys.stdout
-        buf = io.StringIO()
-        try:
-            self.step.emit("Setting up execution env")
-            sys.stdout = buf
-            scope = self.get_scope_fn()
-            self.step.emit("Running generated code")
-            exec(self.code, scope)
-            out = buf.getvalue().strip()
-            self.finished_ok.emit(out if out else "")
-        except Exception:
-            tb = traceback.format_exc()
-            self.finished_err.emit(tb)
-        finally:
-            sys.stdout = old_stdout
-            buf.close()
-
-
 class QueryGIS(QObject):
     def __init__(self, iface_obj):
         super().__init__()
@@ -416,17 +384,16 @@ class QueryGIS(QObject):
         self._last_context_text = ""
         self._last_generated_code = ""
         self._current_run_id = None
-        self._exec_thread = None
 
     def _send_log_async(self, row_data):
-            if not ENABLE_REMOTE_LOG:
-                return
-            worker = LoggingWorker(REPORT_ENDPOINT, row_data, REPORT_TIMEOUT_SEC)
-            
-            worker.finished.connect(lambda w=worker: self._on_logging_worker_finished(w))
-            
-            self.logging_workers.append(worker)
-            worker.start()
+        if not ENABLE_REMOTE_LOG:
+            return
+        worker = LoggingWorker(REPORT_ENDPOINT, row_data, REPORT_TIMEOUT_SEC)
+        
+        worker.finished.connect(lambda w=worker: self._on_logging_worker_finished(w))
+        
+        self.logging_workers.append(worker)
+        worker.start()
 
     def _on_logging_worker_finished(self, worker_instance):
         try:
@@ -434,7 +401,7 @@ class QueryGIS(QObject):
                 self.logging_workers.remove(worker_instance)
         except Exception:
             pass
-
+        
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
             return
@@ -516,9 +483,7 @@ class QueryGIS(QObject):
             self.worker.cancel()
             self.worker.quit()
             self.worker.wait(5000)
-        if self._exec_thread and self._exec_thread.isRunning():
-            self._exec_thread.terminate()
-            self._exec_thread.wait(5000)
+        
         if self.dockwidget:
             self.iface.removeDockWidget(self.dockwidget)
             self.dockwidget.deleteLater()
@@ -717,7 +682,8 @@ class QueryGIS(QObject):
                         error_message=f"[AI_CODE_LEN={len(chosen)}] Code received.",
                         model_name="gemini-2.5-flash",
                         phase="ai_answer",
-                        metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
+                        metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id},
+                        query_gis_instance=self
                     )
                 except Exception:
                     pass
@@ -769,7 +735,7 @@ class QueryGIS(QObject):
         if "processing.run" in code_string:
             code_string = self._inject_processing_feedback(code_string)
 
-        # ===== 변경: 스레드 사용 안 함, 메인 스레드에서 직접 실행 =====
+        # 메인 스레드에서 직접 실행 (스레드 사용 안 함)
         old_stdout = sys.stdout
         buf = io.StringIO()
         
@@ -778,11 +744,33 @@ class QueryGIS(QObject):
             self.update_wave_message("Running generated code")
             
             scope = self.get_execution_scope()
+            
+            # 코드 실행
             exec(code_string, scope)
             
             out_text = buf.getvalue().strip()
             
-            # 성공 처리
+            # 성공 로그 전송
+            try:
+                last_user = ""
+                for m in reversed(self.chat_history):
+                    if m.get("role") == "user":
+                        last_user = m.get("content", "")
+                        break
+                _send_error_report(
+                    user_query=last_user,
+                    context_text="",
+                    generated_code=getattr(self, "_last_generated_code", "") or code_string,
+                    error_message=("SUCCESS" + (f"\nPRINT:\n{out_text}" if out_text else "")),
+                    model_name="gemini-2.5-flash",
+                    phase="execution_result",
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id},
+                    query_gis_instance=self
+                )
+            except Exception:
+                pass
+
+            # UI 업데이트
             self.ui.status_label.setText("Code execution succeeded!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
             
@@ -792,57 +780,10 @@ class QueryGIS(QObject):
             self.stop_wave_progress("Execution completed successfully!")
             self._add_execution_result_to_chat(True, 0.0)
             
-            # 로그 전송
-            try:
-                last_user = ""
-                for m in reversed(self.chat_history):
-                    if m.get("role") == "user":
-                        last_user = m.get("content", "")
-                        break
-                _send_error_report(
-                    user_query=last_user,
-                    context_text="",
-                    generated_code=code_string,
-                    error_message=("SUCCESS" + (f"\nPRINT:\n{out_text}" if out_text else "")),
-                    model_name="gemini-2.5-flash",
-                    phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
-                )
-            except Exception:
-                pass
-                
         except Exception:
             tb_text = traceback.format_exc()
             
-            self.ui.status_label.setText("Execution Error")
-            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            self.append_chat_message("assistant-print", f"Execution Error:\n{tb_text}")
-            self.stop_wave_progress("Error occurred")
-            self._add_execution_result_to_chat(False, 0.0)
-            
-            try:
-                last_user = ""
-                for m in reversed(self.chat_history):
-                    if m.get("role") == "user":
-                        last_user = m.get("content", "")
-                        break
-                _send_error_report(
-                    user_query=last_user,
-                    context_text="",
-                    generated_code=code_string,
-                    error_message=tb_text,
-                    model_name="gemini-2.5-flash",
-                    phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
-                )
-            except Exception:
-                pass
-        
-        finally:
-            sys.stdout = old_stdout
-            buf.close()
-
-        def _on_err(tb_text: str):
+            # 실패 로그 전송
             try:
                 last_user = ""
                 for m in reversed(self.chat_history):
@@ -856,21 +797,22 @@ class QueryGIS(QObject):
                     error_message=tb_text,
                     model_name="gemini-2.5-flash",
                     phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id},
+                    query_gis_instance=self
                 )
             except Exception:
                 pass
 
+            # UI 업데이트
             self.ui.status_label.setText("Execution Error")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             self.append_chat_message("assistant-print", f"Execution Error:\n{tb_text}")
             self.stop_wave_progress("Error occurred")
             self._add_execution_result_to_chat(False, 0.0)
-            self._exec_thread = None
-
-        self._exec_thread.finished_ok.connect(_on_ok)
-        self._exec_thread.finished_err.connect(_on_err)
-        self._exec_thread.start()
+        
+        finally:
+            sys.stdout = old_stdout
+            buf.close()
 
     def get_execution_scope(self):
         scope = {
