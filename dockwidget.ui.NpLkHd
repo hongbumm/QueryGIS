@@ -209,18 +209,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
        </widget>
       </item>
       <item>
-       <widget class="QCheckBox" name="chk_reason">
-        <property name="font">
-         <font>
-          <family>Arial Narrow</family>
-         </font>
-        </property>
-        <property name="text">
-         <string>Gemini Pro (Better, Slower)</string>
-        </property>
-       </widget>
-      </item>
-      <item>
        <widget class="QCheckBox" name="chk_rag">
         <property name="font">
          <font>
