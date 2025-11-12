@@ -107,8 +107,6 @@ class Ui_DockWidget(object):
         self.chk_ask_run = QtWidgets.QCheckBox(self.dockWidgetContents)
         self.chk_ask_run.setObjectName("chk_ask_run")
         self.optionsLayout.addWidget(self.chk_ask_run)
-        # [REMOVED] self.chk_reason
-        # [REMOVED] self.chk_rag
         self.mainLayout.addLayout(self.optionsLayout)
 
         # --- Progress Bar (initially hidden) ---
@@ -164,8 +162,6 @@ class Ui_DockWidget(object):
         self.label_api.setText(_translate("DockWidget", "API KEY"))
         self.btn_ask.setText(_translate("DockWidget", "Ask\n(Ctrl + Enter)"))
         self.chk_ask_run.setText(_translate("DockWidget", "Ask and Run"))
-        # [REMOVED] self.chk_reason.setText(...)
-        # [REMOVED] self.chk_rag.setText(...)
         self.status_label.setText(_translate("DockWidget", "Status: Ready"))
 
 from . import resources

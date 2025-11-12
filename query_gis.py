@@ -517,9 +517,6 @@ class QueryGIS(QObject):
             if saved_api_key:
                 self.ui.line_apikey.setText(saved_api_key)
 
-            self.ui.chk_reason.setVisible(True)
-            self.ui.chk_rag.setVisible(False)
-
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
 
         self.dockwidget.show()

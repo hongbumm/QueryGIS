@@ -124,8 +124,6 @@ class Ui_DockWidget(object):
         self.chk_ask_run.setFont(font)
         self.chk_ask_run.setObjectName("chk_ask_run")
         self.optionsLayout.addWidget(self.chk_ask_run)
-        # [REMOVED] chk_reason
-        # [REMOVED] chk_rag
         self.mainLayout.addLayout(self.optionsLayout)
         self.status_label = QtWidgets.QLabel(self.dockWidgetContents)
         self.status_label.setMaximumSize(QtCore.QSize(1000, 1000))
@@ -149,8 +147,6 @@ class Ui_DockWidget(object):
         self.btn_ask.setText(_translate("DockWidget", "Ask\n"
 "(Ctrl + Enter)"))
         self.chk_ask_run.setText(_translate("DockWidget", "Ask and Run"))
-        # [REMOVED] chk_reason text
-        # [REMOVED] chk_rag text
         self.status_label.setText(_translate("DockWidget", "Status: Waiting for your next command."))
 
 import resources_rc
