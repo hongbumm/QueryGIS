@@ -434,7 +434,7 @@ class QueryGIS(QObject):
                 self.logging_workers.remove(worker_instance)
         except Exception:
             pass
-        
+
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
             return
@@ -769,12 +769,30 @@ class QueryGIS(QObject):
         if "processing.run" in code_string:
             code_string = self._inject_processing_feedback(code_string)
 
-        get_scope = self.get_execution_scope
-
-        self._exec_thread = ExecuteCodeThread(code_string, get_scope)
-        self._exec_thread.step.connect(self.update_wave_message)
-
-        def _on_ok(out_text: str):
+        # ===== 변경: 스레드 사용 안 함, 메인 스레드에서 직접 실행 =====
+        old_stdout = sys.stdout
+        buf = io.StringIO()
+        
+        try:
+            sys.stdout = buf
+            self.update_wave_message("Running generated code")
+            
+            scope = self.get_execution_scope()
+            exec(code_string, scope)
+            
+            out_text = buf.getvalue().strip()
+            
+            # 성공 처리
+            self.ui.status_label.setText("Code execution succeeded!")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
+            
+            if out_text:
+                self.append_chat_message("assistant-print", f"Print output:\n{out_text}")
+            
+            self.stop_wave_progress("Execution completed successfully!")
+            self._add_execution_result_to_chat(True, 0.0)
+            
+            # 로그 전송
             try:
                 last_user = ""
                 for m in reversed(self.chat_history):
@@ -784,7 +802,7 @@ class QueryGIS(QObject):
                 _send_error_report(
                     user_query=last_user,
                     context_text="",
-                    generated_code=getattr(self, "_last_generated_code", "") or code_string,
+                    generated_code=code_string,
                     error_message=("SUCCESS" + (f"\nPRINT:\n{out_text}" if out_text else "")),
                     model_name="gemini-2.5-flash",
                     phase="execution_result",
@@ -792,14 +810,37 @@ class QueryGIS(QObject):
                 )
             except Exception:
                 pass
-
-            self.ui.status_label.setText("Code execution succeeded!")
-            self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
-            if out_text:
-                self.append_chat_message("assistant-print", f"Print output:\n{out_text}")
-            self.stop_wave_progress("Execution completed successfully!")
-            self._add_execution_result_to_chat(True, 0.0)
-            self._exec_thread = None
+                
+        except Exception:
+            tb_text = traceback.format_exc()
+            
+            self.ui.status_label.setText("Execution Error")
+            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
+            self.append_chat_message("assistant-print", f"Execution Error:\n{tb_text}")
+            self.stop_wave_progress("Error occurred")
+            self._add_execution_result_to_chat(False, 0.0)
+            
+            try:
+                last_user = ""
+                for m in reversed(self.chat_history):
+                    if m.get("role") == "user":
+                        last_user = m.get("content", "")
+                        break
+                _send_error_report(
+                    user_query=last_user,
+                    context_text="",
+                    generated_code=code_string,
+                    error_message=tb_text,
+                    model_name="gemini-2.5-flash",
+                    phase="execution_result",
+                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id}
+                )
+            except Exception:
+                pass
+        
+        finally:
+            sys.stdout = old_stdout
+            buf.close()
 
         def _on_err(tb_text: str):
             try:
