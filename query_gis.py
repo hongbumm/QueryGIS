@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os, os.path, sys, io, tempfile, traceback, base64, re, time, uuid
 import builtins
 import logging
@@ -74,7 +73,10 @@ def _send_error_report(user_query: str,
                        error_message: str,
                        model_name: str = "gemini-2.5-flash",
                        phase: str = "execution",
-                       metadata: dict = None):
+                       metadata: dict = None,
+                       
+                       query_gis_instance: 'QueryGIS' = None): 
+
     row = {
         "ts": QtCore.QDateTime.currentDateTimeUtc().toString(Qt.ISODateWithMs),
         "user_input": _mask_sensitive(user_query or ""),
@@ -92,6 +94,11 @@ def _send_error_report(user_query: str,
     print(pretty_json)
 
     if not ENABLE_REMOTE_LOG:
+        return
+
+    if query_gis_instance:
+        query_gis_instance._send_log_async(row)
+        print("[LOG dispatched to background worker]")
         return
 
     last_err = None
@@ -158,32 +165,40 @@ class WaveProgressManager:
         display_text = f"{wave_chars[char_index]} {self.current_message}"
         self.update_callback(display_text, False)
 
+class LoggingWorker(QThread):
+    def __init__(self, endpoint, json_data, timeout):
+        super().__init__()
+        self.endpoint = endpoint
+        self.json_data = json_data
+        self.timeout = timeout
+        self.session = None
+
+    def run(self):
+        try:
+            self.session = requests.Session()
+            retry = Retry(total=1, connect=1, read=1, backoff_factor=0.1)
+            adapter = HTTPAdapter(max_retries=retry)
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+            
+            self.session.post(
+                self.endpoint,
+                json=self.json_data,
+                timeout=self.timeout,
+                headers={"Content-Type": "application/json"}
+            )
+            print("[Log sent in background]")
+        except Exception as e:
+            print(f"[Background log failed]: {e}")
+        finally:
+            if self.session:
+                self.session.close()
+
 
 class BackendWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
-    _session = None
-
-    @classmethod
-    def _get_session(cls):
-        if cls._session is None:
-            s = requests.Session()
-            retry = Retry(
-                total=2, connect=2, read=2,
-                backoff_factor=0.2,
-                status_forcelist=(502, 503, 504)
-            )
-            adapter = HTTPAdapter(pool_connections=10, pool_maxsize=20, max_retries=retry)
-            s.mount("https://", adapter)
-            s.mount("http://", adapter)
-            s.headers.update({
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-                "Content-Type": "application/json"
-            })
-            cls._session = s
-        return cls._session
 
     def __init__(self, payload, backend_url="https://www.querygis.com/chat", timeout_sec=180):
         super().__init__()
@@ -200,6 +215,26 @@ class BackendWorker(QThread):
         self._is_cancelled = True
 
     def run(self):
+        session = None
+        try:
+            session = requests.Session()
+            retry = Retry(
+                total=2, connect=2, read=2,
+                backoff_factor=0.2,
+                status_forcelist=(502, 503, 504)
+            )
+            adapter = HTTPAdapter(pool_connections=2, pool_maxsize=5, max_retries=retry)
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+            session.headers.update({
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+                "Content-Type": "application/json"
+            })
+        except Exception as e:
+            self.error.emit(f"Failed to create request session: {e}")
+            return
+            
         try:
             if self._is_cancelled:
                 return
@@ -210,17 +245,22 @@ class BackendWorker(QThread):
 
             self.step_update.emit("Sending request to server")
             try:
-                session = self._get_session()
                 resp = session.post(
                     self.backend_url,
                     json=self.payload,
-                    timeout=(3, self.timeout_sec)
+                    timeout=self.timeout_sec
                 )
+                
                 if resp.status_code == 200:
                     try:
                         data = resp.json()
                         if isinstance(data, dict):
-                            text = data.get("response") or data.get("text") or json.dumps(data, ensure_ascii=False)
+                            # 서버의 'output.text' 형식 파싱 시도
+                            if "output" in data and isinstance(data["output"], dict) and "text" in data["output"]:
+                                text = data["output"]["text"]
+                            else:
+                                # 이전 형식 호환
+                                text = data.get("response") or data.get("text") or json.dumps(data, ensure_ascii=False)
                         else:
                             text = json.dumps(data, ensure_ascii=False)
                     except Exception:
@@ -264,6 +304,9 @@ class BackendWorker(QThread):
             self.error.emit(f"Worker error: {e}\n{traceback.format_exc()}")
             _send_error_report(self._user_input, self._context_text, "", f"Worker error: {e}",
                                self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.2"})
+        finally:
+            if session:
+                session.close()
 
 
 class _UIFeedback(QgsProcessingFeedback):
@@ -368,13 +411,30 @@ class QueryGIS(QObject):
         self.ui = None
         self.worker = None
         self.wave_manager = None
-
+        self.logging_workers = []
         self._last_status_update_ms = 0
         self._last_context_text = ""
         self._last_generated_code = ""
         self._current_run_id = None
         self._exec_thread = None
 
+    def _send_log_async(self, row_data):
+            if not ENABLE_REMOTE_LOG:
+                return
+            worker = LoggingWorker(REPORT_ENDPOINT, row_data, REPORT_TIMEOUT_SEC)
+            
+            worker.finished.connect(lambda w=worker: self._on_logging_worker_finished(w))
+            
+            self.logging_workers.append(worker)
+            worker.start()
+
+    def _on_logging_worker_finished(self, worker_instance):
+        try:
+            if worker_instance in self.logging_workers:
+                self.logging_workers.remove(worker_instance)
+        except Exception:
+            pass
+        
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
             return
@@ -1057,7 +1117,8 @@ class QueryGIS(QObject):
                     "qgis_version": Qgis.QGIS_VERSION,
                     "os": os.name,
                     "run_id": self._current_run_id
-                }
+                },
+                query_gis_instance=self
             )
 
             if self.worker and self.worker.isRunning():
