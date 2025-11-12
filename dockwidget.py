@@ -107,12 +107,6 @@ class Ui_DockWidget(object):
         self.chk_ask_run = QtWidgets.QCheckBox(self.dockWidgetContents)
         self.chk_ask_run.setObjectName("chk_ask_run")
         self.optionsLayout.addWidget(self.chk_ask_run)
-        self.chk_reason = QtWidgets.QCheckBox(self.dockWidgetContents)
-        self.chk_reason.setObjectName("chk_reason")
-        self.optionsLayout.addWidget(self.chk_reason)
-        self.chk_rag = QtWidgets.QCheckBox(self.dockWidgetContents)
-        self.chk_rag.setObjectName("chk_rag")
-        self.optionsLayout.addWidget(self.chk_rag)
         self.mainLayout.addLayout(self.optionsLayout)
 
         # --- Progress Bar (initially hidden) ---

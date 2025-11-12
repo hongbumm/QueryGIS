@@ -195,34 +195,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
      </layout>
     </item>
     <item>
-     <layout class="QHBoxLayout" name="optionsLayout">
-      <item>
-       <widget class="QCheckBox" name="chk_ask_run">
-        <property name="font">
-         <font>
-          <family>Arial Narrow</family>
-         </font>
-        </property>
-        <property name="text">
-         <string>Ask and Run</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="chk_rag">
-        <property name="font">
-         <font>
-          <family>Arial Narrow</family>
-         </font>
-        </property>
-        <property name="text">
-         <string>RAG(Better, Slower)</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
-    <item>
      <widget class="QProgressBar" name="progressBar">
       <property name="visible">
        <bool>false</bool>
