@@ -538,11 +538,37 @@ class QueryGIS(QObject):
         elif self.ui:
             self.ui.btn_ask.setText("Ask\n(Ctrl+Enter)")
 
-    def _collect_field_samples(self, vlayer, limit_values=5, scan_limit=500):
-        try:
-            return []
-        except Exception:
-            return []
+    def _collect_field_samples(self, vlayer, max_samples=3, scan_limit=50):
+        """
+        성능 최적화: 처음 50개 피처만 스캔
+        """
+        fields_info = []
+        
+        field_samples = {}
+        for field in vlayer.fields():
+            field_samples[field.name()] = {
+                "name": field.name(),
+                "type": field.typeName(),
+                "samples": set()
+            }
+        
+        scan_count = 0
+        for feature in vlayer.getFeatures():
+            if scan_count >= scan_limit:
+                break
+            
+            for field_name, field_info in field_samples.items():
+                if len(field_info["samples"]) < max_samples:
+                    value = feature[field_name]
+                    if value is not None and value != '':
+                        field_info["samples"].add(str(value)[:100])
+            
+            scan_count += 1
+    
+        for field_name in field_samples:
+            field_samples[field_name]["samples"] = list(field_samples[field_name]["samples"])
+        
+        return list(field_samples.values())
 
     def add_chat_message(self, role, message):
         msg_widget = QWidget()
@@ -732,7 +758,6 @@ class QueryGIS(QObject):
         if "processing.run" in code_string:
             code_string = self._inject_processing_feedback(code_string)
 
-        # 메인 스레드에서 직접 실행 (스레드 사용 안 함)
         old_stdout = sys.stdout
         buf = io.StringIO()
         
@@ -742,12 +767,10 @@ class QueryGIS(QObject):
             
             scope = self.get_execution_scope()
             
-            # 코드 실행
             exec(code_string, scope)
             
             out_text = buf.getvalue().strip()
             
-            # 성공 로그 전송
             try:
                 last_user = ""
                 for m in reversed(self.chat_history):
@@ -767,7 +790,6 @@ class QueryGIS(QObject):
             except Exception:
                 pass
 
-            # UI 업데이트
             self.ui.status_label.setText("Code execution succeeded!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
             
@@ -780,7 +802,6 @@ class QueryGIS(QObject):
         except Exception:
             tb_text = traceback.format_exc()
             
-            # 실패 로그 전송
             try:
                 last_user = ""
                 for m in reversed(self.chat_history):
@@ -800,7 +821,6 @@ class QueryGIS(QObject):
             except Exception:
                 pass
 
-            # UI 업데이트
             self.ui.status_label.setText("Execution Error")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
             self.append_chat_message("assistant-print", f"Execution Error:\n{tb_text}")
@@ -997,6 +1017,7 @@ class QueryGIS(QObject):
     def _collect_qgis_context(self):
         p = QgsProject.instance()
         layers_info = []
+        
         for lyr in p.mapLayers().values():
             try:
                 info = {
@@ -1007,9 +1028,12 @@ class QueryGIS(QObject):
                             else "unknown"),
                     "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
                 }
+                
                 if isinstance(lyr, QgsVectorLayer):
                     info["geometry"] = QgsWkbTypes.displayString(lyr.wkbType())
-                    info["fields"] = [f.name() for f in lyr.fields()]
+                    info["feature_count"] = lyr.featureCount()
+                    info["fields"] = self._collect_field_samples(lyr)
+                    
                 layers_info.append(info)
             except Exception:
                 pass
@@ -1106,7 +1130,7 @@ class QueryGIS(QObject):
                 self.worker.quit()
                 self.worker.wait(3000)
 
-            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
+            self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
             self.worker.step_update.connect(self.update_wave_message)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
