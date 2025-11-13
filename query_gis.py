@@ -187,9 +187,8 @@ class LoggingWorker(QThread):
                 timeout=self.timeout,
                 headers={"Content-Type": "application/json"}
             )
-            print("[Log sent in background]")
         except Exception as e:
-            print(f"[Background log failed]: {e}")
+            pass
         finally:
             if self.session:
                 self.session.close()
