@@ -400,7 +400,73 @@ class QueryGIS(QObject):
                 self.logging_workers.remove(worker_instance)
         except Exception:
             pass
-        
+
+    def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
+        """
+        [운영 모드] 코드 실행 및 자가 수정 (상세 로그 제거됨)
+        """
+        MAX_RETRIES = 2
+        FIX_URL = "https://www.querygis.com/fix-code"
+
+        try:
+            start_log_pos = 0
+            if isinstance(sys.stdout, io.StringIO):
+                start_log_pos = sys.stdout.tell()
+
+            exec(code, scope)
+            
+            if isinstance(sys.stdout, io.StringIO):
+                sys.stdout.seek(start_log_pos)
+                current_output = sys.stdout.read()
+                sys.stdout.seek(0, io.SEEK_END)
+
+                if "❌" in current_output or "Traceback" in current_output or "Error:" in current_output:
+                    raise Exception(f"로그에서 에러가 감지되었습니다:\n{current_output.strip()}")
+
+            if retry_count > 0:
+                self.iface.messageBar().pushMessage("Success", "AI가 오류를 수정하여 실행을 완료했습니다.", level=Qgis.Success)
+            
+            return
+
+        except Exception as e:
+            if retry_count >= MAX_RETRIES:
+                self.iface.messageBar().pushMessage("Execution Failed", str(e), level=Qgis.Critical)
+                raise e
+
+            import traceback
+            error_msg = str(e)
+            full_traceback = traceback.format_exc()
+            if "로그에서 에러가 감지되었습니다" in error_msg:
+                full_traceback = error_msg
+
+            self.update_wave_message(f"Fixing Error (Try {retry_count+1})...")
+            
+            api_key = self.load_api_key()
+            payload = {
+                "api_key": api_key,
+                "context": context,
+                "user_input": user_input,
+                "broken_code": code,
+                "error_message": full_traceback,
+                "model": "gemini-2.5-flash"
+            }
+
+            try:
+                response = requests.post(FIX_URL, json=payload, timeout=60)
+                if response.status_code == 200:
+                    data = response.json()
+                    if "output" in data and "text" in data["output"]:
+                        fixed_code = data["output"]["text"]
+                        
+                        if "from qgis.core import" not in fixed_code:
+                            fixed_code = self._prepend_runtime_imports(fixed_code)
+                        
+                        self.execute_with_self_correction(fixed_code, scope, user_input, context, retry_count + 1)
+                        return
+                raise e
+            except Exception:
+                raise e
+
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
             return
@@ -766,18 +832,28 @@ class QueryGIS(QObject):
             
             scope = self.get_execution_scope()
             
-            exec(code_string, scope)
+            # --- [수정된 부분 시작] ---
+            # 1. 문맥 데이터(Context)와 사용자 질문(User Input) 가져오기
+            last_user_input = ""
+            for m in reversed(self.chat_history):
+                if m.get("role") == "user":
+                    last_user_input = m.get("content", "")
+                    break
+            
+            # self._last_context_text가 비어있을 경우를 대비해 다시 수집 (선택사항)
+            current_context = self._last_context_text if self._last_context_text else "{}"
+
+            # 2. 자가 수정 실행 함수 호출 (기존 exec 대체)
+            # exec(code_string, scope)  <-- 기존 코드 삭제
+            self.execute_with_self_correction(code_string, scope, last_user_input, current_context)
+            # --- [수정된 부분 끝] ---
             
             out_text = buf.getvalue().strip()
             
+            # 성공 로그 전송 로직 (기존 유지)
             try:
-                last_user = ""
-                for m in reversed(self.chat_history):
-                    if m.get("role") == "user":
-                        last_user = m.get("content", "")
-                        break
                 _send_error_report(
-                    user_query=last_user,
+                    user_query=last_user_input,
                     context_text="",
                     generated_code=getattr(self, "_last_generated_code", "") or code_string,
                     error_message=("SUCCESS" + (f"\nPRINT:\n{out_text}" if out_text else "")),
@@ -799,6 +875,7 @@ class QueryGIS(QObject):
             self._add_execution_result_to_chat(True, 0.0)
             
         except Exception:
+            # 에러 핸들링 로직 (기존 유지 - 재시도 실패 시 여기로 옴)
             tb_text = traceback.format_exc()
             
             try:
@@ -822,7 +899,7 @@ class QueryGIS(QObject):
 
             self.ui.status_label.setText("Execution Error")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            self.append_chat_message("assistant-print", f"Execution Error:\n{tb_text}")
+            self.append_chat_message("assistant-print", f"Execution Error (Final):\n{tb_text}")
             self.stop_wave_progress("Error occurred")
             self._add_execution_result_to_chat(False, 0.0)
         
