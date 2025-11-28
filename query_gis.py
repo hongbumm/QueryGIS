@@ -402,70 +402,71 @@ class QueryGIS(QObject):
             pass
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
-        """
-        [운영 모드] 코드 실행 및 자가 수정 (상세 로그 제거됨)
-        """
-        MAX_RETRIES = 2
-        FIX_URL = "https://www.querygis.com/fix-code"
-
-        try:
-            start_log_pos = 0
-            if isinstance(sys.stdout, io.StringIO):
-                start_log_pos = sys.stdout.tell()
-
-            exec(code, scope)
-            
-            if isinstance(sys.stdout, io.StringIO):
-                sys.stdout.seek(start_log_pos)
-                current_output = sys.stdout.read()
-                sys.stdout.seek(0, io.SEEK_END)
-
-                if "❌" in current_output or "Traceback" in current_output or "Error:" in current_output:
-                    raise Exception(f"로그에서 에러가 감지되었습니다:\n{current_output.strip()}")
-
-            if retry_count > 0:
-                self.iface.messageBar().pushMessage("Success", "AI가 오류를 수정하여 실행을 완료했습니다.", level=Qgis.Success)
-            
-            return
-
-        except Exception as e:
-            if retry_count >= MAX_RETRIES:
-                self.iface.messageBar().pushMessage("Execution Failed", str(e), level=Qgis.Critical)
-                raise e
-
-            import traceback
-            error_msg = str(e)
-            full_traceback = traceback.format_exc()
-            if "로그에서 에러가 감지되었습니다" in error_msg:
-                full_traceback = error_msg
-
-            self.update_wave_message(f"Fixing Error (Try {retry_count+1})...")
-            
-            api_key = self.load_api_key()
-            payload = {
-                "api_key": api_key,
-                "context": context,
-                "user_input": user_input,
-                "broken_code": code,
-                "error_message": full_traceback,
-                "model": "gemini-2.5-flash"
-            }
+            """
+            [배포용] 실패 흔적을 남기지 않고 조용히 자가 수정하는 함수
+            """
+            MAX_RETRIES = 2
+            FIX_URL = "https://www.querygis.com/fix-code"
 
             try:
-                response = requests.post(FIX_URL, json=payload, timeout=60)
-                if response.status_code == 200:
-                    data = response.json()
-                    if "output" in data and "text" in data["output"]:
-                        fixed_code = data["output"]["text"]
-                        
-                        if "from qgis.core import" not in fixed_code:
-                            fixed_code = self._prepend_runtime_imports(fixed_code)
-                        
-                        self.execute_with_self_correction(fixed_code, scope, user_input, context, retry_count + 1)
-                        return
-                raise e
-            except Exception:
-                raise e
+                start_log_pos = 0
+                if isinstance(sys.stdout, io.StringIO):
+                    start_log_pos = sys.stdout.tell()
+                exec(code, scope)
+                
+                if isinstance(sys.stdout, io.StringIO):
+                    sys.stdout.seek(start_log_pos)
+                    current_output = sys.stdout.read()
+                    sys.stdout.seek(0, io.SEEK_END)
+
+                    if "❌" in current_output or "Traceback" in current_output or "Error:" in current_output:
+                        raise Exception(f"Soft Error Detected:\n{current_output.strip()}")
+                if retry_count > 0:
+                    self.update_wave_message("Optimization complete")
+                
+                return
+
+            except Exception as e:
+                if retry_count >= MAX_RETRIES:
+                    self.iface.messageBar().pushMessage("Error", "작업을 완료할 수 없습니다.", level=Qgis.Critical)
+                    raise e
+
+                import traceback
+                error_msg = str(e)
+                full_traceback = traceback.format_exc()
+                if "Soft Error Detected" in error_msg:
+                    full_traceback = error_msg
+
+                self.update_wave_message(f"Refining code... (Step {retry_count+1})")
+                
+                api_key = self.load_api_key()
+                payload = {
+                    "api_key": api_key,
+                    "context": context,
+                    "user_input": user_input,
+                    "broken_code": code,
+                    "error_message": full_traceback,
+                    "model": "gemini-2.5-flash"
+                }
+
+                try:
+                    response = requests.post(FIX_URL, json=payload, timeout=60)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        if "output" in data and "text" in data["output"]:
+                            fixed_code = data["output"]["text"]
+                            
+                            if "from qgis.core import" not in fixed_code:
+                                fixed_code = self._prepend_runtime_imports(fixed_code)
+                            
+                            self.execute_with_self_correction(fixed_code, scope, user_input, context, retry_count + 1)
+                            return
+                
+                    raise e
+                    
+                except Exception:
+                    raise e
 
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
@@ -1206,7 +1207,7 @@ class QueryGIS(QObject):
                 self.worker.quit()
                 self.worker.wait(3000)
 
-            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
+            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120) ## http://localhost:5000/chat / https://www.querygis.com/chat
             self.worker.step_update.connect(self.update_wave_message)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
