@@ -314,7 +314,6 @@ Or all at once:
 
 3. After installation completes, restart QGIS"""
             
-            # Make text selectable
             msg_box = QMessageBox()
             msg_box.setWindowTitle("Installation Commands")
             msg_box.setText("Copy these commands to install manually:")
@@ -322,34 +321,32 @@ Or all at once:
             msg_box.exec_()
     
     elif system == "Windows":
-            # Windows keeps existing approach
+            from functools import partial
+            
             process = QProcess()
+            error_output_list = [] 
             
-            process.error_output = []
-            
-            def handle_stderr():
-                raw_data = process.readAllStandardError().data()
+            def handle_stderr(proc_obj, log_list):
+                raw_data = proc_obj.readAllStandardError().data()
                 try:
                     decoded = raw_data.decode("utf-8")
                 except UnicodeDecodeError:
                     decoded = raw_data.decode("cp949", errors="replace")
-                # [변경] process 객체의 속성에 접근
-                process.error_output.append(decoded)
+                log_list.append(decoded)
             
-            def install_finished(exit_code, exit_status):
+            def install_finished(log_list, exit_code, exit_status):
                 progress.close()
+                
                 if exit_code == 0:
                     QMessageBox.information(None, "Installation Complete", 
                                             "All required packages have been installed.")
                     prompt_restart()
                 else:
-                    # [변경] process 객체의 속성에 접근
-                    error_message = ''.join(process.error_output).strip() or f"Exit code: {exit_code}"
+                    error_message = ''.join(log_list).strip() or f"Exit code: {exit_code}"
                     QMessageBox.critical(None, "Installation Failed", error_message)
             
-            process.readyReadStandardError.connect(handle_stderr)
-            process.finished.connect(install_finished)
-            # ### 수정 끝 ###
+            process.readyReadStandardError.connect(partial(handle_stderr, process, error_output_list))
+            process.finished.connect(partial(install_finished, error_output_list))
             
             qgis_path = str(os.path.dirname(sys.executable))
             bat_path = os.path.join(plugin_dir, "install_temp.bat")
@@ -359,7 +356,6 @@ Or all at once:
     call py3_env
     python -m pip install -r "{requirements_path}"
     """
-            
             with open(bat_path, "w") as f:
                 f.write(bat_content)
             
@@ -367,7 +363,7 @@ Or all at once:
             process.setArguments(["/C", bat_path])
             process.start()
         
-    else:  # Linux
+    else:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--user", "-r", requirements_path],
