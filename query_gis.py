@@ -3,7 +3,6 @@ import builtins
 import logging
 import requests
 import json
-
 from qgis.utils import iface
 from qgis.core import (
     Qgis,
@@ -53,6 +52,150 @@ REPORT_ENDPOINT = "https://www.querygis.com/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
+class AutoVerifyWrapper:
+    """모든 QGIS 객체를 자동으로 검증"""
+    
+    def __init__(self, obj):
+        object.__setattr__(self, '_obj', obj)
+        object.__setattr__(self, '_type', type(obj).__name__)
+    
+    def __getattr__(self, name):
+        obj = object.__getattribute__(self, '_obj')
+        obj_type = object.__getattribute__(self, '_type')
+        
+        if not hasattr(obj, name):
+            return self._handle_missing(name)
+        
+        attr = getattr(obj, name)
+        
+        if callable(attr):
+            def safe_wrapper(*args, **kwargs):
+                try:
+                    return attr(*args, **kwargs)
+                except (AttributeError, TypeError) as e:
+                    print(f"\n{obj_type}.{name}() failed: {e}")
+                    return self._try_alternatives(name, args, kwargs)
+            return safe_wrapper
+        
+        return attr
+    
+    def _handle_missing(self, name):
+        obj = object.__getattribute__(self, '_obj')
+        obj_type = object.__getattribute__(self, '_type')
+        
+        print(f"\n{obj_type}.{name} does not exist")
+        
+        all_attrs = [a for a in dir(obj) if not a.startswith('_')]
+        name_lower = name.lower()
+        similar = [a for a in all_attrs if name_lower in a.lower() or a.lower() in name_lower]
+        
+        if similar:
+            print(f"Similar: {similar[:5]}")
+            print(f"Using: {similar[0]}")
+            return getattr(obj, similar[0])
+        
+        print(f"Available: {all_attrs[:20]}")
+        
+        def dummy(*args, **kwargs):
+            print(f"Cannot execute {obj_type}.{name}")
+            return None
+        return dummy
+    
+    def _try_alternatives(self, method_name, args, kwargs):
+        obj = object.__getattribute__(self, '_obj')
+        obj_type = object.__getattribute__(self, '_type')
+        
+        all_methods = [m for m in dir(obj) if not m.startswith('_') and callable(getattr(obj, m, None))]
+        keywords = method_name.lower().replace('_', ' ').split()
+        
+        candidates = [m for m in all_methods if all(kw in m.lower() for kw in keywords)]
+        
+        if candidates:
+            print(f"Trying: {candidates[:3]}")
+            for alt in candidates[:3]:
+                try:
+                    result = getattr(obj, alt)(*args, **kwargs)
+                    print(f"✓ {obj_type}.{alt}() succeeded!")
+                    return result
+                except Exception as e:
+                    print(f"{alt}() failed: {e}")
+        
+        print(f"All alternatives failed")
+        print(f"Available: {all_methods[:15]}")
+        return None
+    
+    def __setattr__(self, name, value):
+        if name in ('_obj', '_type'):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, '_obj'), name, value)
+    
+    def __repr__(self):
+        obj_type = object.__getattribute__(self, '_type')
+        return f"<SafeWrapper({obj_type})>"
+
+
+def auto_wrap_scope(scope):
+    
+    def make_safe_class(original_class):
+        def safe_constructor(*args, **kwargs):
+            obj = original_class(*args, **kwargs)
+            return AutoVerifyWrapper(obj)
+        safe_constructor.__name__ = original_class.__name__
+        return safe_constructor
+    
+    wrapped_scope = {}
+    for key, value in scope.items():
+        if isinstance(value, type) and key.startswith('Qgs'):
+            wrapped_scope[key] = make_safe_class(value)
+        else:
+            wrapped_scope[key] = value
+    
+    return wrapped_scope
+
+class SmartQgsImporter(dict):
+    
+    def __init__(self, scope):
+        super().__init__(scope)
+        self._qgis_core = None
+    
+    def __getitem__(self, key):
+        try:
+            return super().__getitem__(key)
+        except KeyError:
+            pass
+        
+        if not key.startswith('Qgs'):
+            raise KeyError(f"'{key}' not found in scope")
+        
+        if self._qgis_core is None:
+            import sys
+            self._qgis_core = sys.modules.get('qgis.core')
+        
+        if self._qgis_core and hasattr(self._qgis_core, key):
+            real_class = getattr(self._qgis_core, key)
+            
+            def safe_constructor(*args, **kwargs):
+                obj = real_class(*args, **kwargs)
+                return AutoVerifyWrapper(obj)
+            
+            safe_constructor.__name__ = key
+            self[key] = safe_constructor 
+            
+            print(f"Auto-imported: {key}")
+            return safe_constructor
+        
+        raise KeyError(f"'{key}' not found in qgis.core")
+    
+    def __contains__(self, key):
+        if super().__contains__(key):
+            return True
+        if not key.startswith('Qgs'):
+            return False
+        if self._qgis_core is None:
+            import sys
+            self._qgis_core = sys.modules.get('qgis.core')
+        return self._qgis_core and hasattr(self._qgis_core, key)
 
 def _mask_sensitive(s: str) -> str:
     if not s:
@@ -65,7 +208,6 @@ def _mask_sensitive(s: str) -> str:
         return s
     except Exception:
         return s
-
 
 def _send_error_report(user_query: str,
                        context_text: str,
@@ -125,7 +267,6 @@ def _send_error_report(user_query: str,
     except Exception:
         pass
 
-
 class WaveProgressManager:
     def __init__(self, update_callback):
         self.update_callback = update_callback
@@ -164,7 +305,6 @@ class WaveProgressManager:
         display_text = f"{wave_chars[char_index]} {self.current_message}"
         self.update_callback(display_text, False)
 
-
 class LoggingWorker(QThread):
     def __init__(self, endpoint, json_data, timeout):
         super().__init__()
@@ -192,7 +332,6 @@ class LoggingWorker(QThread):
         finally:
             if self.session:
                 self.session.close()
-
 
 class BackendWorker(QThread):
     finished = pyqtSignal(str)
@@ -254,11 +393,9 @@ class BackendWorker(QThread):
                     try:
                         data = resp.json()
                         if isinstance(data, dict):
-                            # 서버의 'output.text' 형식 파싱 시도
                             if "output" in data and isinstance(data["output"], dict) and "text" in data["output"]:
                                 text = data["output"]["text"]
                             else:
-                                # 이전 형식 호환
                                 text = data.get("response") or data.get("text") or json.dumps(data, ensure_ascii=False)
                         else:
                             text = json.dumps(data, ensure_ascii=False)
@@ -307,7 +444,6 @@ class BackendWorker(QThread):
             if session:
                 session.close()
 
-
 class _UIFeedback(QgsProcessingFeedback):
     def __init__(self, update_fn, label="Working"):
         super().__init__()
@@ -320,7 +456,6 @@ class _UIFeedback(QgsProcessingFeedback):
         super().pushInfo(info)
         if info:
             self._update(str(info))
-
 
 class _RunProgressProxy:
     def __init__(self, ui_update_fn):
@@ -359,7 +494,6 @@ class _RunProgressProxy:
         except TypeError:
             pass
         return real_run(alg_id, params, context=context, feedback=feedback)
-
 
 class QueryGIS(QObject):
     def __init__(self, iface_obj):
@@ -402,71 +536,99 @@ class QueryGIS(QObject):
             pass
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
-            """
-            [배포용] 실패 흔적을 남기지 않고 조용히 자가 수정하는 함수
-            """
-            MAX_RETRIES = 2
-            FIX_URL = "https://www.querygis.com/fix-code"
+        MAX_RETRIES = 2
+        FIX_URL = "https://www.querygis.com/fix-code"
 
+        try:
+            if retry_count > 0 and isinstance(sys.stdout, io.StringIO):
+                sys.stdout.truncate(0)
+                sys.stdout.seek(0)
+            
+            start_log_pos = 0
+            if isinstance(sys.stdout, io.StringIO):
+                start_log_pos = sys.stdout.tell()
+            
+            exec(code, scope)
+            
+            if isinstance(sys.stdout, io.StringIO):
+                sys.stdout.seek(start_log_pos)
+                current_output = sys.stdout.read()
+                sys.stdout.seek(0, io.SEEK_END)
+
+                has_success = (
+                    "✓" in current_output or 
+                    "완료!" in current_output or 
+                    "success" in current_output.lower() or
+                    "saved:" in current_output.lower()
+                )
+                
+                has_error = (
+                    "❌ 오류 발생:" in current_output or 
+                    "Traceback (most recent call last):" in current_output or
+                    "AttributeError:" in current_output or
+                    "TypeError:" in current_output or
+                    "ValueError:" in current_output or
+                    "KeyError:" in current_output or
+                    "IndexError:" in current_output
+                )
+                
+                if has_error and not has_success:
+                    raise Exception(f"Soft Error Detected:\n{current_output.strip()}")
+            
+            if retry_count > 0:
+                self.update_wave_message("Optimization complete")
+            
+            return
+
+        except Exception as e:
+            if retry_count >= MAX_RETRIES:
+                self.iface.messageBar().pushMessage(
+                    "Error", 
+                    "작업을 완료할 수 없습니다.", 
+                    level=Qgis.Critical
+                )
+                raise e
+
+            import traceback
+            error_msg = str(e)
+            full_traceback = traceback.format_exc()
+            if "Soft Error Detected" in error_msg:
+                full_traceback = error_msg
+
+            self.update_wave_message(f"Refining code... (Step {retry_count+1})")
+            
+            api_key = self.load_api_key()
+
+            payload = {
+                "api_key": api_key,
+                "context": context,
+                "user_input": user_input,
+                "broken_code": code,
+                "error_message": full_traceback,
+                "model": "gemini-2.5-flash"
+            }
             try:
-                start_log_pos = 0
-                if isinstance(sys.stdout, io.StringIO):
-                    start_log_pos = sys.stdout.tell()
-                exec(code, scope)
+                response = requests.post(FIX_URL, json=payload, timeout=60)
                 
-                if isinstance(sys.stdout, io.StringIO):
-                    sys.stdout.seek(start_log_pos)
-                    current_output = sys.stdout.read()
-                    sys.stdout.seek(0, io.SEEK_END)
-
-                    if "❌" in current_output or "Traceback" in current_output or "Error:" in current_output:
-                        raise Exception(f"Soft Error Detected:\n{current_output.strip()}")
-                if retry_count > 0:
-                    self.update_wave_message("Optimization complete")
-                
-                return
-
-            except Exception as e:
-                if retry_count >= MAX_RETRIES:
-                    self.iface.messageBar().pushMessage("Error", "작업을 완료할 수 없습니다.", level=Qgis.Critical)
-                    raise e
-
-                import traceback
-                error_msg = str(e)
-                full_traceback = traceback.format_exc()
-                if "Soft Error Detected" in error_msg:
-                    full_traceback = error_msg
-
-                self.update_wave_message(f"Refining code... (Step {retry_count+1})")
-                
-                api_key = self.load_api_key()
-                payload = {
-                    "api_key": api_key,
-                    "context": context,
-                    "user_input": user_input,
-                    "broken_code": code,
-                    "error_message": full_traceback,
-                    "model": "gemini-2.5-flash"
-                }
-
-                try:
-                    response = requests.post(FIX_URL, json=payload, timeout=60)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        if "output" in data and "text" in data["output"]:
-                            fixed_code = data["output"]["text"]
-                            
-                            if "from qgis.core import" not in fixed_code:
-                                fixed_code = self._prepend_runtime_imports(fixed_code)
-                            
-                            self.execute_with_self_correction(fixed_code, scope, user_input, context, retry_count + 1)
-                            return
-                
-                    raise e
-                    
-                except Exception:
-                    raise e
+                if response.status_code == 200:
+                    data = response.json()
+                    if "output" in data and "text" in data["output"]:
+                        fixed_code = data["output"]["text"]
+                        
+                        if "from qgis.core import" not in fixed_code:
+                            fixed_code = self._prepend_runtime_imports(fixed_code)
+                        
+                        if isinstance(sys.stdout, io.StringIO):
+                            sys.stdout.truncate(0)
+                            sys.stdout.seek(0)
+                        
+                        self.execute_with_self_correction(
+                            fixed_code, scope, user_input, context, retry_count + 1
+                        )
+                        return
+                raise e
+            except Exception:
+                raise e
 
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
@@ -605,9 +767,6 @@ class QueryGIS(QObject):
             self.ui.btn_ask.setText("Ask\n(Ctrl+Enter)")
 
     def _collect_field_samples(self, vlayer, max_samples=3, scan_limit=50):
-        """
-        성능 최적화: 처음 50개 피처만 스캔
-        """
         fields_info = []
         
         field_samples = {}
@@ -832,26 +991,19 @@ class QueryGIS(QObject):
             self.update_wave_message("Running generated code")
             
             scope = self.get_execution_scope()
-            
-            # --- [수정된 부분 시작] ---
-            # 1. 문맥 데이터(Context)와 사용자 질문(User Input) 가져오기
+
             last_user_input = ""
             for m in reversed(self.chat_history):
                 if m.get("role") == "user":
                     last_user_input = m.get("content", "")
                     break
             
-            # self._last_context_text가 비어있을 경우를 대비해 다시 수집 (선택사항)
             current_context = self._last_context_text if self._last_context_text else "{}"
 
-            # 2. 자가 수정 실행 함수 호출 (기존 exec 대체)
-            # exec(code_string, scope)  <-- 기존 코드 삭제
             self.execute_with_self_correction(code_string, scope, last_user_input, current_context)
-            # --- [수정된 부분 끝] ---
             
             out_text = buf.getvalue().strip()
             
-            # 성공 로그 전송 로직 (기존 유지)
             try:
                 _send_error_report(
                     user_query=last_user_input,
@@ -876,7 +1028,6 @@ class QueryGIS(QObject):
             self._add_execution_result_to_chat(True, 0.0)
             
         except Exception:
-            # 에러 핸들링 로직 (기존 유지 - 재시도 실패 시 여기로 옴)
             tb_text = traceback.format_exc()
             
             try:
@@ -919,6 +1070,25 @@ class QueryGIS(QObject):
             'QgsApplication': QgsApplication,
             'QgsProcessingFeatureSourceDefinition': QgsProcessingFeatureSourceDefinition,
             'QgsFeatureSink': QgsFeatureSink,
+            'QgsFeatureRequest': QgsFeatureRequest,
+            'QgsGeometry': QgsGeometry,
+            'QgsPointXY': QgsPointXY,
+            'QgsRectangle': QgsRectangle,
+            'QgsCoordinateReferenceSystem': QgsCoordinateReferenceSystem,
+            'QgsVectorFileWriter': QgsVectorFileWriter,
+            'QgsField': QgsField,
+            'QgsFeature': QgsFeature,
+            'QgsFillSymbol': QgsFillSymbol,
+            'QgsSymbol': QgsSymbol,
+            'QgsSingleSymbolRenderer': QgsSingleSymbolRenderer,
+            'QgsCategorizedSymbolRenderer': QgsCategorizedSymbolRenderer,
+            'QgsRendererCategory': QgsRendererCategory,
+            'QgsPalLayerSettings': QgsPalLayerSettings,
+            'QgsTextFormat': QgsTextFormat,
+            'QgsTextBufferSettings': QgsTextBufferSettings,
+            'QgsVectorLayerSimpleLabeling': QgsVectorLayerSimpleLabeling,
+            'QgsProperty': QgsProperty,
+            'QgsWkbTypes': QgsWkbTypes,
             'QVariant': QVariant,
             'tempfile': tempfile,
             'os': os,
@@ -928,6 +1098,7 @@ class QueryGIS(QObject):
             'get_layer_safe': self.get_layer_safe,
             'shorten_layer_name': self.shorten_layer_name
         }
+        
         scope['processing_feedback'] = _UIFeedback(self.update_wave_message, label="Processing...")
         proc_mod = scope['processing']
         if proc_mod and hasattr(proc_mod, 'run'):
@@ -937,7 +1108,10 @@ class QueryGIS(QObject):
                 proc_mod.run = proxy.wrap(proc_mod.run)
             except Exception as e:
                 logger.warning(f"Failed to wrap processing.run: {e}")
-        return scope
+        
+        wrapped_scope = auto_wrap_scope(scope)
+
+        return SmartQgsImporter(wrapped_scope)
 
     def _inject_processing_feedback(self, code_string: str) -> str:
         out_lines = []
