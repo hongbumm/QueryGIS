@@ -543,62 +543,47 @@ class QueryGIS(QObject):
             if retry_count > 0 and isinstance(sys.stdout, io.StringIO):
                 sys.stdout.truncate(0)
                 sys.stdout.seek(0)
-            
+
             start_log_pos = 0
             if isinstance(sys.stdout, io.StringIO):
                 start_log_pos = sys.stdout.tell()
-            
+
             exec(code, scope)
             
+            current_output = ""
             if isinstance(sys.stdout, io.StringIO):
                 sys.stdout.seek(start_log_pos)
                 current_output = sys.stdout.read()
                 sys.stdout.seek(0, io.SEEK_END)
 
-                has_success = (
-                    "✓" in current_output or 
-                    "완료!" in current_output or 
-                    "success" in current_output.lower() or
-                    "saved:" in current_output.lower()
-                )
-                
-                has_error = (
-                    "❌ 오류 발생:" in current_output or 
-                    "Traceback (most recent call last):" in current_output or
-                    "AttributeError:" in current_output or
-                    "TypeError:" in current_output or
-                    "ValueError:" in current_output or
-                    "KeyError:" in current_output or
-                    "IndexError:" in current_output
-                )
-                
-                if has_error and not has_success:
-                    raise Exception(f"Soft Error Detected:\n{current_output.strip()}")
+            error_indicators = ["❌", "Traceback", "Error:", "오류", "실패", "찾을 수 없습니다"]
+            has_error = any(indicator in current_output for indicator in error_indicators)
             
-            if retry_count > 0:
-                self.update_wave_message("Optimization complete")
-            
+            if has_error:
+                raise Exception("SOFT_ERROR_DETECTED")
+
             return
 
         except Exception as e:
             if retry_count >= MAX_RETRIES:
-                self.iface.messageBar().pushMessage(
-                    "Error", 
-                    "작업을 완료할 수 없습니다.", 
-                    level=Qgis.Critical
-                )
                 raise e
 
-            import traceback
             error_msg = str(e)
             full_traceback = traceback.format_exc()
-            if "Soft Error Detected" in error_msg:
-                full_traceback = error_msg
-
-            self.update_wave_message(f"Refining code... (Step {retry_count+1})")
             
-            api_key = self.load_api_key()
+            if "SOFT_ERROR_DETECTED" in error_msg:
+                if isinstance(sys.stdout, io.StringIO):
+                    current_pos = sys.stdout.tell()
+                    sys.stdout.seek(0)
+                    full_output = sys.stdout.read()
+                    sys.stdout.seek(current_pos)
+                    full_traceback = f"Soft Error - Print Output:\n{full_output}"
+                else:
+                    full_traceback = "Soft Error: Output contains error indicators"
 
+            self.update_wave_message(f"AI 코드 수정 중... (시도 {retry_count + 2}/{MAX_RETRIES + 1})")
+
+            api_key = self.load_api_key()
             payload = {
                 "api_key": api_key,
                 "context": context,
@@ -607,6 +592,7 @@ class QueryGIS(QObject):
                 "error_message": full_traceback,
                 "model": "gemini-2.5-flash"
             }
+
             try:
                 response = requests.post(FIX_URL, json=payload, timeout=60)
                 
@@ -618,16 +604,12 @@ class QueryGIS(QObject):
                         if "from qgis.core import" not in fixed_code:
                             fixed_code = self._prepend_runtime_imports(fixed_code)
                         
-                        if isinstance(sys.stdout, io.StringIO):
-                            sys.stdout.truncate(0)
-                            sys.stdout.seek(0)
-                        
                         self.execute_with_self_correction(
                             fixed_code, scope, user_input, context, retry_count + 1
                         )
                         return
                 raise e
-            except Exception:
+            except requests.RequestException:
                 raise e
 
     def start_wave_progress(self, message="Processing"):
@@ -975,89 +957,102 @@ class QueryGIS(QObject):
             return ""
         
     def run_code_string(self, code_string):
-        if not self.ui:
-            return
+            if not self.ui:
+                return
 
-        self.start_wave_progress("Preparing code execution")
-
-        if "processing.run" in code_string:
-            code_string = self._inject_processing_feedback(code_string)
-
-        old_stdout = sys.stdout
-        buf = io.StringIO()
-        
-        try:
-            sys.stdout = buf
-            self.update_wave_message("Running generated code")
+            self.start_wave_progress("Preparing code execution")
             
-            scope = self.get_execution_scope()
-
-            last_user_input = ""
-            for m in reversed(self.chat_history):
-                if m.get("role") == "user":
-                    last_user_input = m.get("content", "")
-                    break
+            if "processing.run" in code_string:
+                code_string = self._inject_processing_feedback(code_string)
             
-            current_context = self._last_context_text if self._last_context_text else "{}"
-
-            self.execute_with_self_correction(code_string, scope, last_user_input, current_context)
-            
-            out_text = buf.getvalue().strip()
+            main_buffer = io.StringIO()
+            original_stdout = sys.stdout
+            start_time = time.time()
             
             try:
+                sys.stdout = main_buffer
+                scope = self.get_execution_scope()
+                
+                last_user_input = ""
+                for m in reversed(self.chat_history):
+                    if m.get("role") == "user":
+                        last_user_input = m.get("content", "")
+                        break
+                
+                current_context = self._last_context_text or "{}"
+                
+                self.execute_with_self_correction(
+                    code_string, scope, last_user_input, current_context
+                )
+                
+                final_output = main_buffer.getvalue().strip()
+                elapsed = time.time() - start_time
+                
+                self.ui.status_label.setText("Code execution succeeded!")
+                self.ui.status_label.setStyleSheet(
+                    f"background-color: {self.success_status_color}; color: black;"
+                )
+                
                 _send_error_report(
                     user_query=last_user_input,
                     context_text="",
-                    generated_code=getattr(self, "_last_generated_code", "") or code_string,
-                    error_message=("SUCCESS" + (f"\nPRINT:\n{out_text}" if out_text else "")),
+                    generated_code=code_string,
+                    error_message=("SUCCESS" + (f"\nPRINT:\n{final_output}" if final_output else "")),
                     model_name="gemini-2.5-flash",
                     phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id},
+                    metadata={
+                        "plugin_version": "QueryGIS-Plugin/1.2",
+                        "run_id": self._current_run_id,
+                        "elapsed_sec": elapsed
+                    },
                     query_gis_instance=self
                 )
-            except Exception:
-                pass
-
-            self.ui.status_label.setText("Code execution succeeded!")
-            self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
+                
+                if final_output:
+                    self.append_chat_message("assistant-print", f"Output:\n{final_output}")
+                
+                self.stop_wave_progress("Execution completed!")
+                self._add_execution_result_to_chat(True, elapsed)
             
-            if out_text:
-                self.append_chat_message("assistant-print", f"Print output:\n{out_text}")
-            
-            self.stop_wave_progress("Execution completed successfully!")
-            self._add_execution_result_to_chat(True, 0.0)
-            
-        except Exception:
-            tb_text = traceback.format_exc()
-            
-            try:
-                last_user = ""
-                for m in reversed(self.chat_history):
-                    if m.get("role") == "user":
-                        last_user = m.get("content", "")
-                        break
+            except Exception as e:
+                elapsed = time.time() - start_time
+                tb_text = traceback.format_exc()
+                partial_output = main_buffer.getvalue().strip()
+                
+                self.ui.status_label.setText("Execution Error")
+                self.ui.status_label.setStyleSheet(
+                    f"background-color: {self.error_status_color}; color: white;"
+                )
+                
+                error_display = f"Error:\n{tb_text}"
+                if partial_output:
+                    error_display += f"\n\nPartial output:\n{partial_output}"
+                
+                self.append_chat_message("assistant-print", error_display)
+                
                 _send_error_report(
-                    user_query=last_user,
+                    user_query=last_user_input,
                     context_text="",
-                    generated_code=getattr(self, "_last_generated_code", "") or code_string,
+                    generated_code=code_string,
                     error_message=tb_text,
                     model_name="gemini-2.5-flash",
                     phase="execution_result",
-                    metadata={"plugin_version": "QueryGIS-Plugin/1.2", "run_id": self._current_run_id},
+                    metadata={
+                        "plugin_version": "QueryGIS-Plugin/1.2",
+                        "run_id": self._current_run_id,
+                        "elapsed_sec": elapsed,
+                        "final_error": True,
+                        "partial_output": partial_output[:500] if partial_output else None
+                    },
                     query_gis_instance=self
                 )
-            except Exception:
-                pass
-
-            self.ui.status_label.setText("Execution Error")
-            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            self.append_chat_message("assistant-print", f"Execution Error (Final):\n{tb_text}")
-            self.stop_wave_progress("Error occurred")
-            self._add_execution_result_to_chat(False, 0.0)
-        
-        finally:
-            sys.stdout = old_stdout
-            buf.close()
+                
+                self.stop_wave_progress("Error occurred")
+                self._add_execution_result_to_chat(False, elapsed)
+            
+            finally:
+                sys.stdout = original_stdout
+                main_buffer.close()
 
     def get_execution_scope(self):
         scope = {
@@ -1381,7 +1376,7 @@ class QueryGIS(QObject):
                 self.worker.quit()
                 self.worker.wait(3000)
 
-            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120) ## http://localhost:5000/chat / https://www.querygis.com/chat
+            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
             self.worker.step_update.connect(self.update_wave_message)
             self.worker.finished.connect(self.handle_response)
             self.worker.error.connect(self.handle_error)
