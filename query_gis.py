@@ -56,8 +56,6 @@ class _SoftErrorSignal(Exception):
     pass
 
 class AutoVerifyWrapper:
-    """모든 QGIS 객체를 자동으로 검증"""
-    
     def __init__(self, obj):
         object.__setattr__(self, '_obj', obj)
         object.__setattr__(self, '_type', type(obj).__name__)
@@ -139,7 +137,6 @@ class AutoVerifyWrapper:
 
 
 def auto_wrap_scope(scope):
-    
     def make_safe_class(original_class):
         def safe_constructor(*args, **kwargs):
             obj = original_class(*args, **kwargs)
@@ -157,7 +154,6 @@ def auto_wrap_scope(scope):
     return wrapped_scope
 
 class SmartQgsImporter(dict):
-    
     def __init__(self, scope):
         super().__init__(scope)
         self._qgis_core = None
@@ -216,7 +212,7 @@ def _send_error_report(user_query: str,
                        context_text: str,
                        generated_code: str,
                        error_message: str,
-                       model_name: str = "gemini-2.5-flash",
+                       model_name: str = "gemini-3-flash-preview",
                        phase: str = "execution",
                        metadata: dict = None,
                        query_gis_instance: 'QueryGIS' = None): 
@@ -350,7 +346,7 @@ class BackendWorker(QThread):
 
         self._user_input = payload.get("user_input", "")
         self._context_text = payload.get("context", "")
-        self._model_name = payload.get("model", "gemini-2.5-flash")
+        self._model_name = payload.get("model", "gemini-3-flash-preview")
 
     def cancel(self):
         self._is_cancelled = True
@@ -500,7 +496,6 @@ class _RunProgressProxy:
 
 
 class QgsMessageLogCapture(QObject):
-    """QGIS 메시지 로그 캡처 - GDAL/OGR 에러 포함"""
     def __init__(self):
         super().__init__()
         self.messages = []
@@ -573,8 +568,6 @@ class QueryGIS(QObject):
             pass
 
     def _extract_error_summary(self, stdout_output, qgis_errors, qgis_log, original_error=""):
-        """stdout, QGIS 로그에서 핵심 에러 메시지 추출"""
-
         for line in (stdout_output or "").split('\n'):
             line = line.strip()
             if '❌' in line:
@@ -606,6 +599,17 @@ class QueryGIS(QObject):
         log_capture = QgsMessageLogCapture()
         log_capture.start()
 
+        newly_added_layers = []
+        def on_layers_added(layers):
+            for layer in layers:
+                if layer and layer.isValid():
+                    newly_added_layers.append(layer.id())
+
+        try:
+            QgsProject.instance().layersAdded.connect(on_layers_added)
+        except:
+            pass 
+
         try:
             if retry_count > 0 and isinstance(sys.stdout, io.StringIO):
                 sys.stdout.truncate(0)
@@ -629,24 +633,31 @@ class QueryGIS(QObject):
             success_keywords = ["✓", "완료!", "성공", "Complete", "finished", "successfully"]
             if any(s in last_meaningful_line for s in success_keywords):
                 self._last_soft_error_info = None
-                return
+                return 
             
-            fail_keywords = ["❌", "실패", "Error:", "Exception", "찾을 수 없습니다"]
+            fail_keywords = ["❌", "실패", "Error:", "Exception", "찾을 수 없습니다", "오류", "Traceback"]
             has_failure_sign = any(f in last_meaningful_line for f in fail_keywords)
             has_traceback = "Traceback (most recent" in current_output
             
             if has_failure_sign or has_traceback:
+                if newly_added_layers:
+                    QgsProject.instance().removeMapLayers(newly_added_layers)
+                    newly_added_layers.clear()
+
                 self._last_soft_error_info = {
                     "stdout": current_output,
                     "qgis_errors": log_capture.get_errors_only(),
                     "qgis_log": log_capture.get_messages()
                 }
-                raise _SoftErrorSignal("Code execution produced error output")
+                raise _SoftErrorSignal("Error detected in output")
             
             self._last_soft_error_info = None
             return
 
-        except _SoftErrorSignal as soft_err:
+        except (_SoftErrorSignal, Exception) as e:
+            if newly_added_layers:
+                QgsProject.instance().removeMapLayers(newly_added_layers)
+            
             if retry_count >= MAX_RETRIES:
                 qgis_log = log_capture.get_messages()
                 qgis_errors = log_capture.get_errors_only()
@@ -659,50 +670,44 @@ class QueryGIS(QObject):
                 if self._last_soft_error_info:
                     stdout_output = self._last_soft_error_info.get("stdout", stdout_output)
                     qgis_errors = self._last_soft_error_info.get("qgis_errors", qgis_errors)
-                    qgis_log = self._last_soft_error_info.get("qgis_log", qgis_log)
-
-                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, "")
+                
+                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, str(e))
                 raise Exception(error_summary) from None
-            
+
             qgis_log = log_capture.get_messages()
             qgis_errors = log_capture.get_errors_only()
-            
             stdout_output = ""
             if isinstance(sys.stdout, io.StringIO):
                 sys.stdout.seek(0)
                 stdout_output = sys.stdout.read()
 
-            if self._last_soft_error_info:
-                stdout_output = self._last_soft_error_info.get("stdout", stdout_output)
-                qgis_errors = self._last_soft_error_info.get("qgis_errors", qgis_errors)
-                qgis_log = self._last_soft_error_info.get("qgis_log", qgis_log)
+            full_error_for_ai = f"""=== ERROR DETECTED ===
+Error Type: {type(e).__name__}
+Message: {str(e)}
 
-            full_error_for_ai = f"""=== EXECUTION OUTPUT ===
-    {stdout_output}
+=== EXECUTION OUTPUT ===
+{stdout_output}
 
-    === QGIS/GDAL LOG (Errors & Warnings) ===
-    {qgis_errors if qgis_errors else '(none)'}
-
-    === QGIS FULL LOG ===
-    {qgis_log if qgis_log else '(none)'}
-    """
-
+=== QGIS LOG ===
+{qgis_errors}
+"""
             self.update_wave_message(f"자동 수정 중... ({retry_count + 1}/{MAX_RETRIES})")
 
-            api_key = self.load_api_key()
-            fallback_model = "gemini-2.5-pro" if retry_count >= (MAX_RETRIES - 1) else "gemini-2.5-flash"
+            thinking_strategy = "MEDIUM" if retry_count == 0 else "HIGH"
             
+            api_key = self.load_api_key()
             payload = {
                 "api_key": api_key,
                 "context": context,
                 "user_input": user_input,
                 "broken_code": code,
                 "error_message": full_error_for_ai,
-                "model": fallback_model
+                "model": "gemini-3-flash-preview",
+                "thinking_level": thinking_strategy
             }
 
             try:
-                response = requests.post(FIX_URL, json=payload, timeout=60)
+                response = requests.post(FIX_URL, json=payload, timeout=150)
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -712,95 +717,21 @@ class QueryGIS(QObject):
                         if "from qgis.core import" not in fixed_code:
                             fixed_code = self._prepend_runtime_imports(fixed_code)
                         
-                        try:
-                            return self.execute_with_self_correction(
-                                fixed_code, scope, user_input, context, retry_count + 1
-                            )
-                        except _SoftErrorSignal:
-                            raise
-                        except Exception as e:
-                            raise Exception(str(e)) from None
+                        return self.execute_with_self_correction(
+                            fixed_code, scope, user_input, context, retry_count + 1
+                        )
                 
-                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, "")
-                raise Exception(error_summary) from None
+                raise Exception("Fix server request failed")
                 
-            except requests.RequestException:
-                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, "")
-                raise Exception(error_summary) from None
+            except Exception as req_err:
+                raise Exception(f"Recovery failed: {str(req_err)}") from None
 
-        except Exception as e:
-            if isinstance(e, _SoftErrorSignal):
-                raise
-            
-            error_msg = str(e)
-            qgis_log = log_capture.get_messages()
-            qgis_errors = log_capture.get_errors_only()
-            
-            stdout_output = ""
-            if isinstance(sys.stdout, io.StringIO):
-                sys.stdout.seek(0)
-                stdout_output = sys.stdout.read()
-
-            if retry_count >= MAX_RETRIES:
-                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, error_msg)
-                raise Exception(error_summary) from None
-
-            full_error_for_ai = f"""=== PYTHON EXCEPTION ===
-    {traceback.format_exc()}
-
-    === EXECUTION OUTPUT ===
-    {stdout_output}
-
-    === QGIS/GDAL LOG (Errors & Warnings) ===
-    {qgis_errors if qgis_errors else '(none)'}
-
-    === QGIS FULL LOG ===
-    {qgis_log if qgis_log else '(none)'}
-    """
-
-            self.update_wave_message(f"자동 수정 중... ({retry_count + 1}/{MAX_RETRIES})")
-
-            api_key = self.load_api_key()
-            fallback_model = "gemini-2.5-pro" if retry_count >= (MAX_RETRIES - 1) else "gemini-2.5-flash"
-            
-            payload = {
-                "api_key": api_key,
-                "context": context,
-                "user_input": user_input,
-                "broken_code": code,
-                "error_message": full_error_for_ai,
-                "model": fallback_model
-            }
-
-            try:
-                response = requests.post(FIX_URL, json=payload, timeout=60)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if "output" in data and "text" in data["output"]:
-                        fixed_code = data["output"]["text"]
-                        
-                        if "from qgis.core import" not in fixed_code:
-                            fixed_code = self._prepend_runtime_imports(fixed_code)
-                        
-                        try:
-                            return self.execute_with_self_correction(
-                                fixed_code, scope, user_input, context, retry_count + 1
-                            )
-                        except _SoftErrorSignal:
-                            raise
-                        except Exception as e:
-                            raise Exception(str(e)) from None
-                
-                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, error_msg)
-                raise Exception(error_summary) from None
-                
-            except requests.RequestException:
-                error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, error_msg)
-                raise Exception(error_summary) from None
-        
         finally:
             log_capture.stop()
+            try:
+                QgsProject.instance().layersAdded.disconnect(on_layers_added)
+            except:
+                pass
 
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
@@ -1100,7 +1031,7 @@ class QueryGIS(QObject):
                         context_text="",
                         generated_code=chosen,
                         error_message=f"[AI_CODE_LEN={len(chosen)}] Code received.",
-                        model_name="gemini-2.5-flash",
+                        model_name="gemini-3-flash-preview",
                         phase="ai_answer",
                         metadata={"plugin_version": "QueryGIS-Plugin/1.3", "run_id": self._current_run_id},
                         query_gis_instance=self
@@ -1147,10 +1078,6 @@ class QueryGIS(QObject):
             return ""
 
     def _wrap_return_if_needed(self, code_string: str):
-        """
-        If the code contains a top-level 'return', wrap it in a function so Python can execute it.
-        This prevents SyntaxError: 'return' outside function.
-        """
         try:
             compile(code_string, "<string>", "exec")
             return code_string, False
@@ -1263,7 +1190,7 @@ class QueryGIS(QObject):
                 context_text="",
                 generated_code=code_string,
                 error_message=("SUCCESS" + (f"\nPRINT:\n{final_output}" if final_output else "")),
-                model_name="gemini-2.5-flash",
+                model_name="gemini-3-flash-preview",
                 phase="execution_result",
                 metadata={
                     "plugin_version": "QueryGIS-Plugin/1.3",
@@ -1300,7 +1227,7 @@ class QueryGIS(QObject):
                 context_text="",
                 generated_code=code_string,
                 error_message=tb_text,
-                model_name="gemini-2.5-flash",
+                model_name="gemini-3-flash-preview",
                 phase="execution_result",
                 metadata={
                     "plugin_version": "QueryGIS-Plugin/1.3",
@@ -1605,7 +1532,7 @@ class QueryGIS(QObject):
         self.ui.btn_ask.setEnabled(False)
 
         try:
-            model_name = "gemini-2.5-flash"
+            model_name = "gemini-3-flash-preview"
 
             context_dict = self._collect_qgis_context()
             context_text = self._build_context_text(context_dict)
@@ -1615,7 +1542,7 @@ class QueryGIS(QObject):
                 "api_key": api_key,
                 "context": context_text,
                 "user_input": user_input,
-                "model": "gemini-2.5-flash"
+                "model": "gemini-3-flash-preview"
             }
 
             _send_error_report(
