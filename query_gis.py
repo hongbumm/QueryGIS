@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "http://localhost:5000/report-error"
+REPORT_ENDPOINT = "https://querygis.com/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -337,7 +337,7 @@ class BackendWorker(QThread):
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="https://querygis.com/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -561,6 +561,8 @@ class QueryGIS(QObject):
         self._retry_on_execution_failure = True
         self._retry_on_empty_response = False
         self._last_cache_used = None
+        self._execution_advance_triggered = False
+        self._pending_attempt_start = False
 
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
@@ -606,7 +608,7 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "http://localhost:5000/fix-code"
+        FIX_URL = "https://querygis.com/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -684,6 +686,9 @@ class QueryGIS(QObject):
                     qgis_errors = self._last_soft_error_info.get("qgis_errors", qgis_errors)
                 
                 error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, str(e))
+                if self._advance_attempt(error_summary):
+                    self._execution_advance_triggered = True
+                    raise Exception("Execution failed; retrying with next attempt") from None
                 raise Exception(error_summary) from None
 
             qgis_log = log_capture.get_messages()
@@ -772,6 +777,9 @@ Message: {str(e)}
                 raise Exception("Fix server request failed")
                 
             except Exception as req_err:
+                if self._advance_attempt(f"Fix request failed: {str(req_err)}"):
+                    self._execution_advance_triggered = True
+                    raise Exception("Fix request failed; retrying with next attempt") from None
                 raise Exception(f"Recovery failed: {str(req_err)}") from None
 
         finally:
@@ -1153,6 +1161,9 @@ Message: {str(e)}
                     final_code = self._prepend_runtime_imports(chosen)
                     success = self.run_code_string(final_code)
                     if (not success) and self._retry_on_execution_failure:
+                        if self._execution_advance_triggered:
+                            self._execution_advance_triggered = False
+                            return
                         if self._advance_attempt(self._last_execution_error_message or "Execution failed"):
                             return
             else:
@@ -1171,6 +1182,11 @@ Message: {str(e)}
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
             self.stop_wave_progress("Done")
             self.ui.btn_ask.setEnabled(True)
+        if self._pending_attempt_start:
+            self._pending_attempt_start = False
+            return
+        if self.worker and self.worker.isRunning():
+            return
         self._request_attempt = 0
 
     def handle_error(self, error_message: str):
@@ -1234,7 +1250,7 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, backend_url="https://querygis.com/chat", timeout_sec=120)
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
@@ -1253,6 +1269,25 @@ Message: {str(e)}
             context_text = self._build_context_text(context_dict)
             self._last_context_text = context_text
             self._request_tool_info = self._collect_tool_info()
+            self._pending_attempt_start = True
+            try:
+                _send_error_report(
+                    user_query=self._request_user_input,
+                    context_text="",
+                    generated_code="",
+                    error_message=f"Advancing to Attempt 2: {self._request_error_message}",
+                    model_name=self._request_model,
+                    phase="attempt_start",
+                    metadata={
+                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "run_id": self._current_run_id,
+                        "attempt": 2,
+                        "mode": "info_light"
+                    },
+                    query_gis_instance=self
+                )
+            except Exception:
+                pass
             self._start_backend_attempt(
                 mode="info_light",
                 context_text=context_text,
@@ -1268,6 +1303,25 @@ Message: {str(e)}
             self._last_context_text = context_text
             if not self._request_tool_info:
                 self._request_tool_info = self._collect_tool_info()
+            self._pending_attempt_start = True
+            try:
+                _send_error_report(
+                    user_query=self._request_user_input,
+                    context_text="",
+                    generated_code="",
+                    error_message=f"Advancing to Attempt 3: {self._request_error_message}",
+                    model_name=self._request_model,
+                    phase="attempt_start",
+                    metadata={
+                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "run_id": self._current_run_id,
+                        "attempt": 3,
+                        "mode": "rag_full"
+                    },
+                    query_gis_instance=self
+                )
+            except Exception:
+                pass
             self._start_backend_attempt(
                 mode="rag_full",
                 context_text=context_text,
@@ -2112,6 +2166,7 @@ Message: {str(e)}
             self._last_context_text = context_text
             self._tool_request_rounds = 0
             self._last_prompt_full = ""
+            self._execution_advance_triggered = False
 
             _send_error_report(
                 user_query=user_input,
