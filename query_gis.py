@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "https://www.querygis.com/report-error"
+REPORT_ENDPOINT = "http://localhost:5000/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -337,7 +337,7 @@ class BackendWorker(QThread):
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="https://www.querygis.com/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -549,6 +549,20 @@ class QueryGIS(QObject):
         self._last_generated_code = ""
         self._current_run_id = None
         self._last_soft_error_info = None
+        self._request_attempt = 0
+        self._request_user_input = ""
+        self._request_api_key = ""
+        self._request_model = "gemini-3-flash-preview"
+        self._request_should_run = False
+        self._request_tool_info = ""
+        self._request_error_message = ""
+        self._last_execution_error_message = ""
+        self._last_token_count = None
+        self._last_response_mode = ""
+        self._tool_request_rounds = 0
+        self._last_prompt_full = ""
+        self._retry_on_execution_failure = True
+        self._retry_on_empty_response = True
 
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
@@ -594,7 +608,7 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "https://www.querygis.com/fix-code"
+        FIX_URL = "http://localhost:5000/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -1011,8 +1025,55 @@ Message: {str(e)}
         return "\n".join(pre) + raw_code
 
     def handle_response(self, response_text: str):
+        self._last_token_count = None
+        self._last_response_mode = ""
+        self._last_prompt_full = ""
+        tool_request = None
+        try:
+            data = json.loads(response_text)
+            if isinstance(data, dict):
+                if "token_count" in data:
+                    try:
+                        self._last_token_count = int(data.get("token_count"))
+                    except Exception:
+                        self._last_token_count = None
+                self._last_response_mode = str(data.get("mode") or "")
+                tool_request = data.get("tool_request")
+                if "prompt_full" in data and isinstance(data.get("prompt_full"), str):
+                    self._last_prompt_full = data.get("prompt_full")
+        except Exception:
+            pass
+        if tool_request and self._handle_tool_request(tool_request):
+            try:
+                last_user = ""
+                for m in reversed(self.chat_history):
+                    if m.get("role") == "user":
+                        last_user = m.get("content", "")
+                        break
+                _send_error_report(
+                    user_query=last_user,
+                    context_text="",
+                    generated_code="",
+                    error_message="[TOOL_REQUEST] Client info requested.",
+                    model_name="gemini-3-flash-preview",
+                    phase="tool_request",
+                    metadata={
+                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "run_id": self._current_run_id,
+                        "attempt": self._request_attempt or None,
+                        "mode": self._last_response_mode or None,
+                        "token_count": self._last_token_count,
+                        "prompt_full": self._last_prompt_full or None,
+                        "tool_request": tool_request
+                    },
+                    query_gis_instance=self
+                )
+            except Exception:
+                pass
+            return
+
         display_text, code_blocks = self._parse_backend_response(response_text)
-        should_run = bool(self.ui.chk_ask_run.isChecked()) if self.ui else False
+        should_run = self._request_should_run if self._request_attempt else (bool(self.ui.chk_ask_run.isChecked()) if self.ui else False)
 
         chosen = None
         if code_blocks:
@@ -1033,7 +1094,14 @@ Message: {str(e)}
                         error_message=f"[AI_CODE_LEN={len(chosen)}] Code received.",
                         model_name="gemini-3-flash-preview",
                         phase="ai_answer",
-                        metadata={"plugin_version": "QueryGIS-Plugin/1.3", "run_id": self._current_run_id},
+                        metadata={
+                            "plugin_version": "QueryGIS-Plugin/1.3",
+                            "run_id": self._current_run_id,
+                            "attempt": self._request_attempt or None,
+                            "mode": self._last_response_mode or None,
+                            "token_count": self._last_token_count,
+                            "prompt_full": self._last_prompt_full or None
+                        },
                         query_gis_instance=self
                     )
                 except Exception:
@@ -1043,10 +1111,19 @@ Message: {str(e)}
                 if should_run:
                     self.start_wave_progress("Executing code")
                     final_code = self._prepend_runtime_imports(chosen)
-                    self.run_code_string(final_code)
+                    success = self.run_code_string(final_code)
+                    if (not success) and self._retry_on_execution_failure:
+                        if self._advance_attempt(self._last_execution_error_message or "Execution failed"):
+                            return
             else:
+                if (not display_text.strip()) and self._retry_on_empty_response:
+                    if self._advance_attempt("Empty response from server"):
+                        return
                 self.append_chat_message("assistant-print", display_text.strip())
         else:
+            if (not display_text.strip()) and self._retry_on_empty_response:
+                if self._advance_attempt("Empty response from server"):
+                    return
             self.append_chat_message("assistant-print", display_text.strip())
 
         if self.ui:
@@ -1054,28 +1131,114 @@ Message: {str(e)}
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
             self.stop_wave_progress("Done")
             self.ui.btn_ask.setEnabled(True)
+        self._request_attempt = 0
 
     def handle_error(self, error_message: str):
         if not self.ui:
             return
         msg = str(error_message).strip() or "Unknown error"
+        if self._request_attempt and self._advance_attempt(msg):
+            return
         self.append_chat_message("assistant-print", f"Error:\n{msg}")
         self.ui.status_label.setText("Request failed")
         self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
         self.stop_wave_progress("Error")
         self.ui.btn_ask.setEnabled(True)
+        self._request_attempt = 0
 
     def _build_context_text(self, ctx: dict) -> str:
         try:
             trimmed = {"project": ctx.get("project", {}), "layers": []}
             for li in ctx.get("layers", []):
                 li2 = dict(li)
-                if isinstance(li2.get("fields"), list) and len(li2["fields"]) > 20:
-                    li2["fields"] = li2["fields"][:20] + ["..."]
+                if isinstance(li2.get("fields"), list) and li2["fields"]:
+                    if not isinstance(li2["fields"][0], dict) and len(li2["fields"]) > 20:
+                        li2["fields"] = li2["fields"][:20] + ["..."]
                 trimmed["layers"].append(li2)
-            return json.dumps(trimmed, ensure_ascii=False)
+            return json.dumps(trimmed, ensure_ascii=False, default=str)
         except Exception:
-            return ""
+            try:
+                fallback = {"project": self._collect_project_metadata(), "layers": []}
+                return json.dumps(fallback, ensure_ascii=False, default=str)
+            except Exception:
+                return ""
+
+    def _build_backend_payload(self, mode, context_text="", tool_info="", error_message="", tool_request=None, tool_data=None):
+        payload = {
+            "api_key": self._request_api_key,
+            "context": context_text or "",
+            "user_input": self._request_user_input,
+            "model": self._request_model,
+            "mode": mode
+        }
+        if tool_info:
+            payload["tool_info"] = tool_info
+        if error_message:
+            payload["error_message"] = error_message
+        if tool_request:
+            payload["tool_request"] = tool_request
+        if tool_data:
+            payload["tool_data"] = tool_data
+        return payload
+
+    def _start_backend_attempt(self, mode, context_text="", tool_info="", error_message="", tool_request=None, tool_data=None):
+        payload = self._build_backend_payload(
+            mode=mode,
+            context_text=context_text,
+            tool_info=tool_info,
+            error_message=error_message,
+            tool_request=tool_request,
+            tool_data=tool_data
+        )
+
+        if self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.quit()
+            self.worker.wait(3000)
+
+        self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
+        self.worker.step_update.connect(self.update_wave_message)
+        self.worker.finished.connect(self.handle_response)
+        self.worker.error.connect(self.handle_error)
+        self.worker.start()
+
+    def _advance_attempt(self, reason):
+        if self._request_attempt >= 3:
+            return False
+
+        self._request_attempt += 1
+        self._request_error_message = reason or ""
+
+        if self._request_attempt == 2:
+            self.update_wave_message("Retrying with on-demand info (2/3)")
+            context_dict = self._collect_qgis_context()
+            context_text = self._build_context_text(context_dict)
+            self._last_context_text = context_text
+            self._request_tool_info = self._collect_tool_info()
+            self._start_backend_attempt(
+                mode="info_light",
+                context_text=context_text,
+                tool_info=self._request_tool_info,
+                error_message=self._request_error_message
+            )
+            return True
+
+        if self._request_attempt == 3:
+            self.update_wave_message("Retrying with full reference context (3/3)")
+            context_dict = self._collect_qgis_context()
+            context_text = self._build_context_text(context_dict)
+            self._last_context_text = context_text
+            if not self._request_tool_info:
+                self._request_tool_info = self._collect_tool_info()
+            self._start_backend_attempt(
+                mode="rag_full",
+                context_text=context_text,
+                tool_info=self._request_tool_info,
+                error_message=self._request_error_message
+            )
+            return True
+
+        return False
 
     def _wrap_return_if_needed(self, code_string: str):
         try:
@@ -1137,9 +1300,10 @@ Message: {str(e)}
 
     def run_code_string(self, code_string):
         if not self.ui:
-            return
+            return False
 
         self.start_wave_progress("Preparing code execution")
+        self._last_execution_error_message = ""
         
         if "processing.run" in code_string:
             code_string = self._inject_processing_feedback(code_string)
@@ -1148,6 +1312,7 @@ Message: {str(e)}
             code_string, _ = self._wrap_return_if_needed(code_string)
         except SyntaxError as e:
             err_msg = f"Syntax error before execution: {e}"
+            self._last_execution_error_message = err_msg
             self.append_chat_message("assistant-print", err_msg)
             if self.ui:
                 self.ui.status_label.setText("Execution Error")
@@ -1155,7 +1320,7 @@ Message: {str(e)}
                     f"background-color: {self.error_status_color}; color: white;"
                 )
             self.stop_wave_progress("Error occurred")
-            return
+            return False
         
         main_buffer = io.StringIO()
         original_stdout = sys.stdout
@@ -1195,7 +1360,10 @@ Message: {str(e)}
                 metadata={
                     "plugin_version": "QueryGIS-Plugin/1.3",
                     "run_id": self._current_run_id,
-                    "elapsed_sec": elapsed
+                    "elapsed_sec": elapsed,
+                    "attempt": self._request_attempt or None,
+                    "mode": self._last_response_mode or None,
+                    "token_count": self._last_token_count
                 },
                 query_gis_instance=self
             )
@@ -1205,11 +1373,13 @@ Message: {str(e)}
             
             self.stop_wave_progress("Execution completed!")
             self._add_execution_result_to_chat(True, elapsed)
+            return True
         
         except Exception as e:
             elapsed = time.time() - start_time
             tb_text = traceback.format_exc()
             partial_output = main_buffer.getvalue().strip()
+            self._last_execution_error_message = tb_text
             
             self.ui.status_label.setText("Execution Error")
             self.ui.status_label.setStyleSheet(
@@ -1234,13 +1404,17 @@ Message: {str(e)}
                     "run_id": self._current_run_id,
                     "elapsed_sec": elapsed,
                     "final_error": True,
-                    "partial_output": partial_output[:500] if partial_output else None
+                    "partial_output": partial_output[:500] if partial_output else None,
+                    "attempt": self._request_attempt or None,
+                    "mode": self._last_response_mode or None,
+                    "token_count": self._last_token_count
                 },
                 query_gis_instance=self
             )
             
             self.stop_wave_progress("Error occurred")
             self._add_execution_result_to_chat(False, elapsed)
+            return False
         
         finally:
             sys.stdout = original_stdout
@@ -1452,9 +1626,93 @@ Message: {str(e)}
                 return ""
         return ""
 
+    def _normalize_metadata_keywords(self, md):
+        kw = []
+        try:
+            raw_kw = md.keywords()
+            if isinstance(raw_kw, dict):
+                for _, v in raw_kw.items():
+                    if isinstance(v, (list, tuple)):
+                        kw.extend([str(x) for x in v])
+                    elif v is not None:
+                        kw.append(str(v))
+            elif isinstance(raw_kw, (list, tuple)):
+                kw = [str(x) for x in raw_kw]
+            elif raw_kw:
+                kw = [str(raw_kw)]
+        except Exception:
+            kw = []
+        return kw
+
+    def _collect_layer_metadata(self, layer):
+        layer_meta = {}
+        try:
+            if hasattr(layer, "metadata"):
+                md = layer.metadata()
+                layer_meta = {
+                    "identifier": getattr(md, "identifier", lambda: "")(),
+                    "title": getattr(md, "title", lambda: "")(),
+                    "abstract": getattr(md, "abstract", lambda: "")(),
+                    "keywords": self._normalize_metadata_keywords(md)
+                }
+        except Exception:
+            layer_meta = {}
+        return layer_meta
+
+    def _collect_project_metadata(self):
+        p = QgsProject.instance()
+        meta = {
+            "crs": p.crs().authid(),
+            "title": getattr(p, "title", lambda: "")(),
+            "file_name": getattr(p, "fileName", lambda: "")(),
+            "home_path": getattr(p, "homePath", lambda: "")()
+        }
+        try:
+            if hasattr(p, "metadata"):
+                md = p.metadata()
+                meta["metadata"] = {
+                    "identifier": getattr(md, "identifier", lambda: "")(),
+                    "title": getattr(md, "title", lambda: "")(),
+                    "abstract": getattr(md, "abstract", lambda: "")(),
+                    "keywords": self._normalize_metadata_keywords(md)
+                }
+        except Exception:
+            pass
+        return meta
+
+    def _collect_vector_feature_rows(self, vlayer, max_rows=5, max_value_len=120):
+        rows = []
+        try:
+            fields = [f.name() for f in vlayer.fields()]
+        except Exception:
+            fields = []
+        for i, feat in enumerate(vlayer.getFeatures()):
+            if i >= max_rows:
+                break
+            row = {}
+            for fname in fields:
+                try:
+                    val = feat[fname]
+                except Exception:
+                    val = None
+                if val is None:
+                    row[fname] = None
+                else:
+                    sval = str(val)
+                    row[fname] = sval[:max_value_len]
+            rows.append(row)
+        return rows
+
     def _collect_qgis_context(self):
         p = QgsProject.instance()
         layers_info = []
+        active_id = None
+        try:
+            active = self.iface.activeLayer() if self.iface else None
+            if active:
+                active_id = active.id()
+        except Exception:
+            active_id = None
         
         for lyr in p.mapLayers().values():
             try:
@@ -1465,24 +1723,292 @@ Message: {str(e)}
                             else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
                             else "unknown"),
                     "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
+                    "provider": getattr(lyr, "providerType", lambda: None)(),
+                    "source": getattr(lyr, "source", lambda: None)(),
+                    "metadata": self._collect_layer_metadata(lyr)
                 }
                 
                 if isinstance(lyr, QgsVectorLayer):
                     info["geometry"] = QgsWkbTypes.displayString(lyr.wkbType())
                     info["feature_count"] = lyr.featureCount()
-                    info["fields"] = self._collect_field_samples(lyr)
+                    info["fields"] = [f.name() for f in lyr.fields()]
+                    info["is_csv"] = (str(info.get("provider") or "").lower() == "delimitedtext")
+                    max_rows = 5 if (active_id and lyr.id() == active_id) else 3
+                    info["feature_samples"] = self._collect_vector_feature_rows(lyr, max_rows=max_rows)
+                    try:
+                        ext = lyr.extent()
+                        info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                    except Exception:
+                        pass
+                elif isinstance(lyr, QgsRasterLayer):
+                    try:
+                        ext = lyr.extent()
+                        info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                        info["extent_corners"] = {
+                            "top_left": [ext.xMinimum(), ext.yMaximum()],
+                            "top_right": [ext.xMaximum(), ext.yMaximum()],
+                            "bottom_left": [ext.xMinimum(), ext.yMinimum()],
+                            "bottom_right": [ext.xMaximum(), ext.yMinimum()]
+                        }
+                    except Exception:
+                        pass
+                    try:
+                        info["band_count"] = lyr.bandCount()
+                        info["width"] = lyr.width()
+                        info["height"] = lyr.height()
+                    except Exception:
+                        pass
                     
                 layers_info.append(info)
             except Exception:
                 pass
 
         return {
-            "project": {
-                "crs": p.crs().authid(),
-                "layerCount": len(layers_info),
-            },
+            "project": self._collect_project_metadata(),
             "layers": layers_info
         }
+
+    def _collect_qgis_context_light(self):
+        p = QgsProject.instance()
+        layers_info = []
+
+        for lyr in p.mapLayers().values():
+            try:
+                info = {
+                    "name": lyr.name(),
+                    "type": ("vector" if lyr.type() == QgsMapLayer.VectorLayer
+                            else "raster" if lyr.type() == QgsMapLayer.RasterLayer
+                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
+                            else "unknown"),
+                    "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
+                    "provider": getattr(lyr, "providerType", lambda: None)(),
+                    "source": getattr(lyr, "source", lambda: None)(),
+                    "metadata": self._collect_layer_metadata(lyr)
+                }
+                if isinstance(lyr, QgsVectorLayer):
+                    info["geometry"] = QgsWkbTypes.displayString(lyr.wkbType())
+                    info["feature_count"] = lyr.featureCount()
+                    info["is_csv"] = (str(info.get("provider") or "").lower() == "delimitedtext")
+                    info["fields"] = [f.name() for f in lyr.fields()]
+                    info["feature_samples"] = self._collect_vector_feature_rows(lyr, max_rows=3)
+                    try:
+                        ext = lyr.extent()
+                        info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                    except Exception:
+                        pass
+                elif isinstance(lyr, QgsRasterLayer):
+                    try:
+                        ext = lyr.extent()
+                        info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                        info["extent_corners"] = {
+                            "top_left": [ext.xMinimum(), ext.yMaximum()],
+                            "top_right": [ext.xMaximum(), ext.yMaximum()],
+                            "bottom_left": [ext.xMinimum(), ext.yMinimum()],
+                            "bottom_right": [ext.xMaximum(), ext.yMinimum()]
+                        }
+                    except Exception:
+                        pass
+                    try:
+                        info["band_count"] = lyr.bandCount()
+                        info["width"] = lyr.width()
+                        info["height"] = lyr.height()
+                    except Exception:
+                        pass
+                layers_info.append(info)
+            except Exception:
+                pass
+
+        return {
+            "project": self._collect_project_metadata(),
+            "layers": layers_info
+        }
+
+    def _collect_qgis_context_active(self):
+        p = QgsProject.instance()
+        layers_info = []
+        try:
+            active = self.iface.activeLayer() if self.iface else None
+        except Exception:
+            active = None
+        if not active:
+            try:
+                all_layers = list(p.mapLayers().values())
+                active = all_layers[0] if all_layers else None
+            except Exception:
+                active = None
+
+        if active:
+            try:
+                info = {
+                    "name": active.name(),
+                    "type": ("vector" if active.type() == QgsMapLayer.VectorLayer
+                            else "raster" if active.type() == QgsMapLayer.RasterLayer
+                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == active.type()
+                            else "unknown"),
+                    "crs": active.crs().authid() if hasattr(active, "crs") else None,
+                    "provider": getattr(active, "providerType", lambda: None)(),
+                    "source": getattr(active, "source", lambda: None)(),
+                    "metadata": self._collect_layer_metadata(active)
+                }
+                if isinstance(active, QgsVectorLayer):
+                    info["geometry"] = QgsWkbTypes.displayString(active.wkbType())
+                    info["feature_count"] = active.featureCount()
+                    info["is_csv"] = (str(info.get("provider") or "").lower() == "delimitedtext")
+                    info["fields"] = [f.name() for f in active.fields()]
+                    info["feature_samples"] = self._collect_vector_feature_rows(active, max_rows=5)
+                    try:
+                        ext = active.extent()
+                        info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                    except Exception:
+                        pass
+                elif isinstance(active, QgsRasterLayer):
+                    try:
+                        ext = active.extent()
+                        info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                        info["extent_corners"] = {
+                            "top_left": [ext.xMinimum(), ext.yMaximum()],
+                            "top_right": [ext.xMaximum(), ext.yMaximum()],
+                            "bottom_left": [ext.xMinimum(), ext.yMinimum()],
+                            "bottom_right": [ext.xMaximum(), ext.yMinimum()]
+                        }
+                    except Exception:
+                        pass
+                    try:
+                        info["band_count"] = active.bandCount()
+                        info["width"] = active.width()
+                        info["height"] = active.height()
+                    except Exception:
+                        pass
+                layers_info.append(info)
+            except Exception:
+                pass
+
+        return {
+            "project": self._collect_project_metadata(),
+            "layers": layers_info
+        }
+
+    def _collect_tool_info(self):
+        info = {}
+        try:
+            canvas = self.iface.mapCanvas() if self.iface else None
+            if canvas:
+                ext = canvas.extent()
+                if ext:
+                    info["map_extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+        except Exception:
+            pass
+
+        try:
+            active = self.iface.activeLayer() if self.iface else None
+            if active:
+                active_info = {
+                    "name": active.name(),
+                    "type": ("vector" if active.type() == QgsMapLayer.VectorLayer
+                             else "raster" if active.type() == QgsMapLayer.RasterLayer
+                             else "unknown")
+                }
+                if isinstance(active, QgsVectorLayer):
+                    active_info["geometry"] = QgsWkbTypes.displayString(active.wkbType())
+                    active_info["fields"] = [f.name() for f in active.fields()]
+                    try:
+                        active_info["selected_count"] = active.selectedFeatureCount()
+                    except Exception:
+                        pass
+                info["active_layer"] = active_info
+        except Exception:
+            pass
+
+        try:
+            p = QgsProject.instance()
+            info["project_crs"] = p.crs().authid()
+        except Exception:
+            pass
+
+        try:
+            return json.dumps(info, ensure_ascii=False)
+        except Exception:
+            return ""
+
+    def _collect_tool_data(self, tools):
+        data = {}
+        for tool in tools or []:
+            try:
+                name = tool.get("name")
+                params = tool.get("params") or {}
+            except Exception:
+                continue
+            if not name:
+                continue
+
+            if name == "context_light":
+                ctx = self._collect_qgis_context_light()
+                data[name] = ctx
+            elif name == "context_full":
+                ctx = self._collect_qgis_context()
+                data[name] = ctx
+            elif name == "tool_info":
+                data[name] = self._collect_tool_info()
+            elif name == "map_extent":
+                try:
+                    canvas = self.iface.mapCanvas() if self.iface else None
+                    ext = canvas.extent() if canvas else None
+                    if ext:
+                        data[name] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
+                except Exception:
+                    pass
+            elif name == "active_layer_fields":
+                try:
+                    active = self.iface.activeLayer() if self.iface else None
+                    if active and isinstance(active, QgsVectorLayer):
+                        data[name] = {
+                            "name": active.name(),
+                            "geometry": QgsWkbTypes.displayString(active.wkbType()),
+                            "fields": [f.name() for f in active.fields()]
+                        }
+                except Exception:
+                    pass
+            elif name == "layer_by_name":
+                try:
+                    target = params.get("name")
+                    if target:
+                        layer = self.find_layer_by_keyword(target)
+                        if layer and isinstance(layer, QgsVectorLayer):
+                            data[name] = {
+                                "name": layer.name(),
+                                "geometry": QgsWkbTypes.displayString(layer.wkbType()),
+                                "fields": [f.name() for f in layer.fields()],
+                                "feature_count": layer.featureCount()
+                            }
+                        elif layer:
+                            data[name] = {
+                                "name": layer.name(),
+                                "type": "raster" if layer.type() == QgsMapLayer.RasterLayer else "unknown"
+                            }
+                except Exception:
+                    pass
+        return data
+
+    def _handle_tool_request(self, tool_request):
+        if self._tool_request_rounds >= 2:
+            return False
+        tools = tool_request.get("tools") if isinstance(tool_request, dict) else None
+        if not tools:
+            return False
+        tool_data = self._collect_tool_data(tools)
+        if not tool_data:
+            return False
+        self._tool_request_rounds += 1
+        self.update_wave_message("Collecting requested info")
+        self._start_backend_attempt(
+            mode="tool_followup",
+            context_text=self._last_context_text or "",
+            tool_info=self._request_tool_info or "",
+            error_message=self._request_error_message or "",
+            tool_request=tool_request,
+            tool_data=tool_data
+        )
+        return True
 
     def _add_execution_result_to_chat(self, execution_success, seconds):
         if not self.ui:
@@ -1533,17 +2059,21 @@ Message: {str(e)}
 
         try:
             model_name = "gemini-3-flash-preview"
-
-            context_dict = self._collect_qgis_context()
+            self._request_attempt = 1
+            self._request_user_input = user_input
+            self._request_api_key = api_key
+            self._request_model = model_name
+            self._request_should_run = bool(self.ui.chk_ask_run.isChecked())
+            self._request_tool_info = self._collect_tool_info()
+            self._request_error_message = ""
+            self._last_execution_error_message = ""
+            context_dict = self._collect_qgis_context_active()
             context_text = self._build_context_text(context_dict)
+            print("[DEBUG] context_text_len:", len(context_text or ""))
+            print("[DEBUG] context_text_preview:\n", (context_text or "")[:2000])
             self._last_context_text = context_text
-
-            payload = {
-                "api_key": api_key,
-                "context": context_text,
-                "user_input": user_input,
-                "model": "gemini-3-flash-preview"
-            }
+            self._tool_request_rounds = 0
+            self._last_prompt_full = ""
 
             _send_error_report(
                 user_query=user_input,
@@ -1558,21 +2088,18 @@ Message: {str(e)}
                     "plugin_version": "QueryGIS-Plugin/1.3",
                     "qgis_version": Qgis.QGIS_VERSION,
                     "os": os.name,
-                    "run_id": self._current_run_id
+                    "run_id": self._current_run_id,
+                    "attempt": self._request_attempt,
+                    "mode": "instruction_only"
                 },
                 query_gis_instance=self
             )
 
-            if self.worker and self.worker.isRunning():
-                self.worker.cancel()
-                self.worker.quit()
-                self.worker.wait(3000)
-
-            self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
-            self.worker.step_update.connect(self.update_wave_message)
-            self.worker.finished.connect(self.handle_response)
-            self.worker.error.connect(self.handle_error)
-            self.worker.start()
+            self._start_backend_attempt(
+                mode="instruction_only",
+                context_text=context_text,
+                tool_info=self._request_tool_info
+            )
         except Exception as e:
             logger.error(f"Query processing error: {e}")
             self.handle_error(f"Query processing failed: {str(e)}")
