@@ -707,7 +707,7 @@ Message: {str(e)}
 """
             self.update_wave_message(f"자동 수정 중... ({retry_count + 1}/{MAX_RETRIES})")
 
-            thinking_strategy = "MEDIUM" if retry_count == 0 else "HIGH"
+            thinking_strategy = "LOW" if retry_count == 0 else "HIGH"
             
             api_key = self.load_api_key()
             payload = {
