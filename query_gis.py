@@ -391,13 +391,10 @@ class BackendWorker(QThread):
                 if resp.status_code == 200:
                     try:
                         data = resp.json()
-                        if isinstance(data, dict):
-                            if "output" in data and isinstance(data["output"], dict) and "text" in data["output"]:
-                                text = data["output"]["text"]
-                            else:
-                                text = data.get("response") or data.get("text") or json.dumps(data, ensure_ascii=False)
-                        else:
+                        if isinstance(data, (dict, list)):
                             text = json.dumps(data, ensure_ascii=False)
+                        else:
+                            text = str(data)
                     except Exception:
                         text = resp.text
                     self.step_update.emit("Processing response")
@@ -562,7 +559,7 @@ class QueryGIS(QObject):
         self._tool_request_rounds = 0
         self._last_prompt_full = ""
         self._retry_on_execution_failure = True
-        self._retry_on_empty_response = True
+        self._retry_on_empty_response = False
 
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
@@ -727,9 +724,34 @@ Message: {str(e)}
                     data = response.json()
                     if "output" in data and "text" in data["output"]:
                         fixed_code = data["output"]["text"]
+                        token_count = None
+                        try:
+                            token_count = data.get("token_count")
+                        except Exception:
+                            token_count = None
                         
                         if "from qgis.core import" not in fixed_code:
                             fixed_code = self._prepend_runtime_imports(fixed_code)
+
+                        try:
+                            _send_error_report(
+                                user_query=user_input,
+                                context_text="",
+                                generated_code=fixed_code,
+                                error_message="[FIX_CODE] Code fixed.",
+                                model_name="gemini-3-flash-preview",
+                                phase="fix_code",
+                                metadata={
+                                    "plugin_version": "QueryGIS-Plugin/1.3",
+                                    "run_id": self._current_run_id,
+                                    "attempt": self._request_attempt or None,
+                                    "fix_round": retry_count + 1,
+                                    "token_count": token_count
+                                },
+                                query_gis_instance=self
+                            )
+                        except Exception:
+                            pass
                         
                         return self.execute_with_self_correction(
                             fixed_code, scope, user_input, context, retry_count + 1
@@ -1137,8 +1159,6 @@ Message: {str(e)}
         if not self.ui:
             return
         msg = str(error_message).strip() or "Unknown error"
-        if self._request_attempt and self._advance_attempt(msg):
-            return
         self.append_chat_message("assistant-print", f"Error:\n{msg}")
         self.ui.status_label.setText("Request failed")
         self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
