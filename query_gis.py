@@ -560,6 +560,7 @@ class QueryGIS(QObject):
         self._last_prompt_full = ""
         self._retry_on_execution_failure = True
         self._retry_on_empty_response = False
+        self._last_cache_used = None
 
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
@@ -702,6 +703,17 @@ Message: {str(e)}
 === QGIS LOG ===
 {qgis_errors}
 """
+            error_for_fix = full_error_for_ai[-1000:] if len(full_error_for_ai) > 1000 else full_error_for_ai
+            broken_lines = code.splitlines()
+            if len(broken_lines) > 500:
+                broken_code_for_fix = "\n".join(broken_lines[:500])
+            else:
+                broken_code_for_fix = code
+            try:
+                fix_ctx = self._collect_qgis_context_active(max_rows=3)
+                context_for_fix = self._build_context_text(fix_ctx)
+            except Exception:
+                context_for_fix = context
             self.update_wave_message(f"자동 수정 중... ({retry_count + 1}/{MAX_RETRIES})")
 
             thinking_strategy = "LOW" if retry_count == 0 else "HIGH"
@@ -709,10 +721,10 @@ Message: {str(e)}
             api_key = self.load_api_key()
             payload = {
                 "api_key": api_key,
-                "context": context,
+                "context": context_for_fix,
                 "user_input": user_input,
-                "broken_code": code,
-                "error_message": full_error_for_ai,
+                "broken_code": broken_code_for_fix,
+                "error_message": error_for_fix,
                 "model": "gemini-3-flash-preview",
                 "thinking_level": thinking_strategy
             }
@@ -1054,6 +1066,11 @@ Message: {str(e)}
         try:
             data = json.loads(response_text)
             if isinstance(data, dict):
+                if "cache_used" in data:
+                    try:
+                        self._last_cache_used = bool(data.get("cache_used"))
+                    except Exception:
+                        self._last_cache_used = None
                 if "token_count" in data:
                     try:
                         self._last_token_count = int(data.get("token_count"))
@@ -1122,6 +1139,7 @@ Message: {str(e)}
                             "attempt": self._request_attempt or None,
                             "mode": self._last_response_mode or None,
                             "token_count": self._last_token_count,
+                            "cache_used": self._last_cache_used,
                             "prompt_full": self._last_prompt_full or None
                         },
                         query_gis_instance=self
@@ -1843,7 +1861,7 @@ Message: {str(e)}
             "layers": layers_info
         }
 
-    def _collect_qgis_context_active(self):
+    def _collect_qgis_context_active(self, max_rows=5):
         p = QgsProject.instance()
         layers_info = []
         try:
@@ -1875,7 +1893,7 @@ Message: {str(e)}
                     info["feature_count"] = active.featureCount()
                     info["is_csv"] = (str(info.get("provider") or "").lower() == "delimitedtext")
                     info["fields"] = [f.name() for f in active.fields()]
-                    info["feature_samples"] = self._collect_vector_feature_rows(active, max_rows=5)
+                    info["feature_samples"] = self._collect_vector_feature_rows(active, max_rows=max_rows)
                     try:
                         ext = active.extent()
                         info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
