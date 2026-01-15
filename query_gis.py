@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "https://www.querygis.com/report-error"
+REPORT_ENDPOINT = "https://querygis.com/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -337,7 +337,7 @@ class BackendWorker(QThread):
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="https://www.querygis.com/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="https://querygis.com/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -608,7 +608,7 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "https://www.querygis.com/fix-code"
+        FIX_URL = "https://querygis.com/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -1258,7 +1258,7 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, backend_url="https://querygis.com/chat", timeout_sec=120)
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
@@ -1317,7 +1317,7 @@ Message: {str(e)}
     
     def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
         """Syntax Error 전용 Fix 서버 호출"""
-        FIX_URL = "https://www.querygis.com/fix-code"
+        FIX_URL = "https://querygis.com/fix-code"
         
         api_key = self.load_api_key()
         payload = {
