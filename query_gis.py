@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "https://querygis.com/report-error"
+REPORT_ENDPOINT = "https://www.querygis.com/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -337,7 +337,7 @@ class BackendWorker(QThread):
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="https://querygis.com/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="https://www.querygis.com/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -608,7 +608,7 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "https://querygis.com/fix-code"
+        FIX_URL = "https://www.querygis.com/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -652,7 +652,7 @@ class QueryGIS(QObject):
             fail_keywords = ["❌", "실패", "Error:", "Exception", "찾을 수 없습니다", "오류", "Traceback"]
             has_failure_sign = any(f in last_meaningful_line for f in fail_keywords)
             has_traceback = "Traceback (most recent" in current_output
-            
+
             if has_failure_sign or has_traceback:
                 if newly_added_layers:
                     QgsProject.instance().removeMapLayers(newly_added_layers)
@@ -663,6 +663,8 @@ class QueryGIS(QObject):
                     "qgis_errors": log_capture.get_errors_only(),
                     "qgis_log": log_capture.get_messages()
                 }
+                
+                print(f"[SOFT ERROR DETECTED] Retry {retry_count + 1}/{MAX_RETRIES}")
                 raise _SoftErrorSignal("Error detected in output")
             
             self._last_soft_error_info = None
@@ -686,9 +688,12 @@ class QueryGIS(QObject):
                     qgis_errors = self._last_soft_error_info.get("qgis_errors", qgis_errors)
                 
                 error_summary = self._extract_error_summary(stdout_output, qgis_errors, qgis_log, str(e))
-                if self._advance_attempt(error_summary):
-                    self._execution_advance_triggered = True
-                    raise Exception("Execution failed; retrying with next attempt") from None
+                
+                current_attempt = self._request_attempt
+                if current_attempt == 1:
+                    if self._advance_attempt(error_summary):
+                        self._execution_advance_triggered = True
+                        raise Exception("Moving to Attempt 2 after fix failure") from None
                 raise Exception(error_summary) from None
 
             qgis_log = log_capture.get_messages()
@@ -777,9 +782,12 @@ Message: {str(e)}
                 raise Exception("Fix server request failed")
                 
             except Exception as req_err:
-                if self._advance_attempt(f"Fix request failed: {str(req_err)}"):
-                    self._execution_advance_triggered = True
-                    raise Exception("Fix request failed; retrying with next attempt") from None
+                current_attempt = self._request_attempt
+                if current_attempt == 1:
+                    if self._advance_attempt(f"Fix request failed: {str(req_err)}"):
+                        self._execution_advance_triggered = True
+                        raise Exception("Fix failed; moving to Attempt 2") from None
+                
                 raise Exception(f"Recovery failed: {str(req_err)}") from None
 
         finally:
@@ -1250,26 +1258,34 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="https://querygis.com/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, backend_url="https://www.querygis.com/chat", timeout_sec=120)
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
         self.worker.start()
 
     def _advance_attempt(self, reason):
-        if self._request_attempt >= 3:
+        """재시도 전략: 2단계로 축소 (info_light 제거)"""
+        
+        # ========== 최대 2회로 제한 ==========
+        if self._request_attempt >= 2:
             return False
 
         self._request_attempt += 1
         self._request_error_message = reason or ""
 
         if self._request_attempt == 2:
-            self.update_wave_message("Retrying with on-demand info (2/3)")
+            self.update_wave_message("Retrying with full context + RAG (2/2)")
+            
             context_dict = self._collect_qgis_context()
             context_text = self._build_context_text(context_dict)
             self._last_context_text = context_text
-            self._request_tool_info = self._collect_tool_info()
+            
+            if not self._request_tool_info:
+                self._request_tool_info = self._collect_tool_info()
+            
             self._pending_attempt_start = True
+            
             try:
                 _send_error_report(
                     user_query=self._request_user_input,
@@ -1282,46 +1298,13 @@ Message: {str(e)}
                         "plugin_version": "QueryGIS-Plugin/1.3",
                         "run_id": self._current_run_id,
                         "attempt": 2,
-                        "mode": "info_light"
-                    },
-                    query_gis_instance=self
-                )
-            except Exception:
-                pass
-            self._start_backend_attempt(
-                mode="info_light",
-                context_text=context_text,
-                tool_info=self._request_tool_info,
-                error_message=self._request_error_message
-            )
-            return True
-
-        if self._request_attempt == 3:
-            self.update_wave_message("Retrying with full reference context (3/3)")
-            context_dict = self._collect_qgis_context()
-            context_text = self._build_context_text(context_dict)
-            self._last_context_text = context_text
-            if not self._request_tool_info:
-                self._request_tool_info = self._collect_tool_info()
-            self._pending_attempt_start = True
-            try:
-                _send_error_report(
-                    user_query=self._request_user_input,
-                    context_text="",
-                    generated_code="",
-                    error_message=f"Advancing to Attempt 3: {self._request_error_message}",
-                    model_name=self._request_model,
-                    phase="attempt_start",
-                    metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.3",
-                        "run_id": self._current_run_id,
-                        "attempt": 3,
                         "mode": "rag_full"
                     },
                     query_gis_instance=self
                 )
             except Exception:
                 pass
+            
             self._start_backend_attempt(
                 mode="rag_full",
                 context_text=context_text,
@@ -1331,6 +1314,62 @@ Message: {str(e)}
             return True
 
         return False
+    
+    def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
+        """Syntax Error 전용 Fix 서버 호출"""
+        FIX_URL = "https://www.querygis.com/fix-code"
+        
+        api_key = self.load_api_key()
+        payload = {
+            "api_key": api_key,
+            "context": context,
+            "user_input": user_input,
+            "broken_code": broken_code[:2000],  # 길이 제한
+            "error_message": f"SYNTAX ERROR:\n{error_message}",
+            "model": "gemini-3-flash-preview",
+            "thinking_level": "HIGH"
+        }
+        
+        try:
+            self.update_wave_message("Fixing syntax error...")
+            response = requests.post(FIX_URL, json=payload, timeout=60)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if "output" in data and "text" in data["output"]:
+                    fixed_code = data["output"]["text"]
+                    
+                    # Import 추가
+                    if "from qgis.core import" not in fixed_code:
+                        fixed_code = self._prepend_runtime_imports(fixed_code)
+                    
+                    # 로그 전송
+                    try:
+                        _send_error_report(
+                            user_query=user_input,
+                            context_text="",
+                            generated_code=fixed_code,
+                            error_message="[SYNTAX_FIX] Code fixed.",
+                            model_name="gemini-3-flash-preview",
+                            phase="syntax_fix",
+                            metadata={
+                                "plugin_version": "QueryGIS-Plugin/1.3",
+                                "run_id": self._current_run_id,
+                                "attempt": self._request_attempt or None,
+                                "token_count": data.get("token_count")
+                            },
+                            query_gis_instance=self
+                        )
+                    except Exception:
+                        pass
+                    
+                    return fixed_code
+            
+            return None
+        
+        except Exception as e:
+            print(f"[SYNTAX FIX ERROR] {e}")
+            return None
 
     def _wrap_return_if_needed(self, code_string: str):
         try:
@@ -1400,19 +1439,39 @@ Message: {str(e)}
         if "processing.run" in code_string:
             code_string = self._inject_processing_feedback(code_string)
         
-        try:
-            code_string, _ = self._wrap_return_if_needed(code_string)
-        except SyntaxError as e:
-            err_msg = f"Syntax error before execution: {e}"
-            self._last_execution_error_message = err_msg
-            self.append_chat_message("assistant-print", err_msg)
-            if self.ui:
-                self.ui.status_label.setText("Execution Error")
-                self.ui.status_label.setStyleSheet(
-                    f"background-color: {self.error_status_color}; color: white;"
-                )
-            self.stop_wave_progress("Error occurred")
-            return False
+            try:
+                code_string, _ = self._wrap_return_if_needed(code_string)
+            except SyntaxError as e:
+                err_msg = f"Syntax error before execution: {e}"
+                self._last_execution_error_message = err_msg
+                
+                if self._retry_on_execution_failure:
+                    if self._request_attempt == 1:
+                        if self._advance_attempt(err_msg):
+                            self._execution_advance_triggered = True
+                            return False
+                    if self._request_attempt <= 2:
+                        try:
+                            fixed_code = self._call_syntax_fixer(
+                                code_string, 
+                                err_msg,
+                                self._request_user_input,
+                                self._last_context_text
+                            )
+                            if fixed_code:
+                                print(f"[SYNTAX FIX] Retrying with fixed code")
+                                return self.run_code_string(fixed_code)
+                        except Exception as fix_err:
+                            print(f"[SYNTAX FIX FAILED] {fix_err}")
+                
+                self.append_chat_message("assistant-print", err_msg)
+                if self.ui:
+                    self.ui.status_label.setText("Syntax Error")
+                    self.ui.status_label.setStyleSheet(
+                        f"background-color: {self.error_status_color}; color: white;"
+                    )
+                self.stop_wave_progress("Syntax error occurred")
+                return False
         
         main_buffer = io.StringIO()
         original_stdout = sys.stdout
@@ -2159,6 +2218,7 @@ Message: {str(e)}
             self._request_tool_info = self._collect_tool_info()
             self._request_error_message = ""
             self._last_execution_error_message = ""
+            
             context_dict = self._collect_qgis_context_active()
             context_text = self._build_context_text(context_dict)
             print("[DEBUG] context_text_len:", len(context_text or ""))
@@ -2183,7 +2243,8 @@ Message: {str(e)}
                     "os": os.name,
                     "run_id": self._current_run_id,
                     "attempt": self._request_attempt,
-                    "mode": "instruction_only"
+                    "mode": "instruction_only",
+                    "max_attempts": 2  # ← 3에서 2로 변경 (로그용)
                 },
                 query_gis_instance=self
             )
