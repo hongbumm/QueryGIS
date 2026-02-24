@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "http://localhost:5000/report-error"
+REPORT_ENDPOINT = "https://querygis.com/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -370,7 +370,7 @@ class BackendWorker(QThread):
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="https://querygis.com/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -447,28 +447,28 @@ class BackendWorker(QThread):
                         error_message=f"Server error {resp.status_code}: {msg}",
                         model_name=self._model_name,
                         phase="llm_call",
-                        metadata={"plugin_version": "QueryGIS-Plugin/1.3"}
+                        metadata={"plugin_version": "QueryGIS-Plugin/1.5"}
                     )
 
             except requests.exceptions.Timeout:
                 self.error.emit("Request timeout - server did not respond in time")
                 _send_error_report(self._user_input, self._context_text, "", "Timeout to backend",
-                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"})
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
 
             except requests.exceptions.ConnectionError:
                 self.error.emit(f"Cannot connect to backend server at {self.backend_url}")
                 _send_error_report(self._user_input, self._context_text, "", "ConnectionError to backend",
-                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"})
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
 
             except requests.exceptions.RequestException as e:
                 self.error.emit(f"Network error: {e}")
                 _send_error_report(self._user_input, self._context_text, "", f"RequestException: {e}",
-                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"})
+                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
 
         except Exception as e:
             self.error.emit(f"Worker error: {e}\n{traceback.format_exc()}")
             _send_error_report(self._user_input, self._context_text, "", f"Worker error: {e}",
-                               self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.3"})
+                               self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
         finally:
             if session:
                 session.close()
@@ -480,33 +480,44 @@ class _UIFeedback(QgsProcessingFeedback):
         self._label = label
     def setProgress(self, p):
         super().setProgress(p)
-        self._update(f"{self._label} {p:.0f}%")
+        # Update text and numerical progress
+        self._update(f"{self._label} {p:.0f}%", progress=p)
+        # Prevent UI freeze by processing events
+        QApplication.processEvents()
     def pushInfo(self, info):
         super().pushInfo(info)
         if info:
             self._update(str(info))
+            QApplication.processEvents()
 
 class _RunProgressProxy:
-    def __init__(self, ui_update_fn):
+    def __init__(self, ui_update_fn, scope=None):
         self._update = ui_update_fn
+        self._scope = scope or {}
         self._calls_seen = 0
         self._calls_done = 0
         self._last_ui_ms = 0
-    def _maybe_update(self, text):
+    def _maybe_update(self, text, progress=None):
         now = int(time.time()*1000)
-        if now - self._last_ui_ms >= 250:
+        # Keep UI responsive
+        QApplication.processEvents()
+        if now - self._last_ui_ms >= 100: # Increased frequency
             self._last_ui_ms = now
-            self._update(text)
+            self._update(text, progress=progress)
     def wrap(self, real_run):
         def _wrapped(alg_id, params, context=None, feedback=None, **kwargs):
+            # If AI code didn't provide feedback, inject our UI feedback if available in scope
+            if feedback is None and 'processing_feedback' in self._scope:
+                feedback = self._scope['processing_feedback']
+            
             self._calls_seen += 1
-            self._maybe_update(f"Processing started… (step {self._calls_seen})")
+            self._maybe_update(f"Processing step {self._calls_seen}…")
             try:
                 res = self._safe_run(real_run, alg_id, params, context=context, feedback=feedback)
                 self._calls_done += 1
-                self._maybe_update(f"Processing in progress… {self._calls_done} done")
+                self._maybe_update(f"Step {self._calls_done} complete")
                 if self._calls_done == self._calls_seen:
-                    self._maybe_update("Processing complete")
+                    self._maybe_update("Analysis complete", progress=100)
                 return res
             except Exception:
                 self._maybe_update("Processing failed")
@@ -642,7 +653,7 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "http://localhost:5000/fix-code"
+        FIX_URL = "https://querygis.com/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -763,7 +774,7 @@ Message: {str(e)}
                     model_name="gemini-3-flash-preview",
                     phase="execution_failure",
                     metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "plugin_version": "QueryGIS-Plugin/1.5",
                         "run_id": self._current_run_id,
                         "attempt": self._request_attempt or None,
                         "fix_round": retry_count + 1,
@@ -824,7 +835,7 @@ Message: {str(e)}
                                 model_name="gemini-3-flash-preview",
                                 phase="fix_code",
                                 metadata={
-                                    "plugin_version": "QueryGIS-Plugin/1.3",
+                                    "plugin_version": "QueryGIS-Plugin/1.5",
                                     "run_id": self._current_run_id,
                                     "attempt": self._request_attempt or None,
                                     "fix_round": retry_count + 1,
@@ -879,9 +890,20 @@ Message: {str(e)}
     def update_wave_message(self, message, progress=None):
         if not self.wave_manager:
             return
+        
         now = int(time.time() * 1000)
-        if now - self._last_status_update_ms < 120:
+        # UI responsiveness
+        QApplication.processEvents()
+
+        if progress is not None:
+            if self.ui:
+                if self.ui.progressBar.minimum() != 0 or self.ui.progressBar.maximum() != 100:
+                    self.ui.progressBar.setRange(0, 100)
+                self.ui.progressBar.setValue(int(progress))
+            # If progress is provided, we can skip the rate limit to ensure smooth display
+        elif now - self._last_status_update_ms < 120:
             return
+            
         self._last_status_update_ms = now
         self.wave_manager.update_message(str(message))
 
@@ -1293,7 +1315,7 @@ Message: {str(e)}
                     model_name="gemini-3-flash-preview",
                     phase="tool_request",
                     metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "plugin_version": "QueryGIS-Plugin/1.5",
                         "run_id": self._current_run_id,
                         "attempt": self._request_attempt or None,
                         "mode": self._last_response_mode or None,
@@ -1330,7 +1352,7 @@ Message: {str(e)}
                         model_name="gemini-3-flash-preview",
                         phase="ai_answer",
                         metadata={
-                            "plugin_version": "QueryGIS-Plugin/1.3",
+                            "plugin_version": "QueryGIS-Plugin/1.5",
                             "run_id": self._current_run_id,
                             "attempt": self._request_attempt or None,
                             "mode": self._last_response_mode or None,
@@ -1411,7 +1433,8 @@ Message: {str(e)}
             "context": context_text or "",
             "user_input": self._request_user_input,
             "model": self._request_model,
-            "mode": mode
+            "mode": mode,
+            "version": "QueryGIS-Plugin/1.5"
         }
         if tool_info:
             payload["tool_info"] = tool_info
@@ -1438,7 +1461,7 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, backend_url="https://querygis.com/chat", timeout_sec=120)
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
@@ -1475,7 +1498,7 @@ Message: {str(e)}
                     model_name=self._request_model,
                     phase="attempt_start",
                     metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "plugin_version": "QueryGIS-Plugin/1.5",
                         "run_id": self._current_run_id,
                         "attempt": 2,
                         "mode": "rag_full"
@@ -1497,7 +1520,7 @@ Message: {str(e)}
     
     def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
         """Syntax Error 전용 Fix 서버 호출"""
-        FIX_URL = "http://localhost:5000/fix-code"
+        FIX_URL = "https://querygis.com/fix-code"
         
         api_key = self.load_api_key()
         payload = {
@@ -1533,7 +1556,7 @@ Message: {str(e)}
                             model_name="gemini-3-flash-preview",
                             phase="syntax_fix",
                             metadata={
-                                "plugin_version": "QueryGIS-Plugin/1.3",
+                                "plugin_version": "QueryGIS-Plugin/1.5",
                                 "run_id": self._current_run_id,
                                 "attempt": self._request_attempt or None,
                                 "token_count": data.get("token_count")
@@ -1691,7 +1714,7 @@ Message: {str(e)}
                 model_name="gemini-3-flash-preview",
                 phase="execution_result",
                 metadata={
-                    "plugin_version": "QueryGIS-Plugin/1.3",
+                    "plugin_version": "QueryGIS-Plugin/1.5",
                     "run_id": self._current_run_id,
                     "elapsed_sec": elapsed,
                     "attempt": self._request_attempt or None,
@@ -1741,7 +1764,7 @@ Message: {str(e)}
                 model_name="gemini-3-flash-preview",
                 phase="execution_result",
                 metadata={
-                    "plugin_version": "QueryGIS-Plugin/1.3",
+                    "plugin_version": "QueryGIS-Plugin/1.5",
                     "run_id": self._current_run_id,
                     "elapsed_sec": elapsed,
                     "final_error": True,
@@ -1804,7 +1827,7 @@ Message: {str(e)}
         scope['processing_feedback'] = _UIFeedback(self.update_wave_message, label="Processing...")
         proc_mod = scope['processing']
         if proc_mod and hasattr(proc_mod, 'run'):
-            proxy = _RunProgressProxy(self.update_wave_message)
+            proxy = _RunProgressProxy(self.update_wave_message, scope=scope)
             try:
                 scope['_orig_processing_run'] = proc_mod.run
                 proc_mod.run = proxy.wrap(proc_mod.run)
@@ -2447,7 +2470,7 @@ Message: {str(e)}
                 metadata={
                     "model": model_name,
                     "phase": "user_query",
-                    "plugin_version": "QueryGIS-Plugin/1.3",
+                    "plugin_version": "QueryGIS-Plugin/1.5",
                     "qgis_version": Qgis.QGIS_VERSION,
                     "os": os.name,
                     "run_id": self._current_run_id,

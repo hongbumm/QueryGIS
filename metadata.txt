@@ -6,7 +6,7 @@
 name=QueryGIS
 qgisMinimumVersion=3.0
 description=Contorl QGIS with LLM, Make it Easier!
-version=1.0.1
+version=1.5.0
 author=3DLabs, Juseong Lee
 email=juseonglee99@3dlabs.co.kr
 
