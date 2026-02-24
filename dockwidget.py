@@ -74,6 +74,34 @@ class Ui_DockWidget(object):
         self.chatScrollArea.setWidget(self.chatWidget)
         self.mainLayout.addWidget(self.chatScrollArea)
 
+        # --- Layer List (New) ---
+        self.layerHeaderLayout = QtWidgets.QHBoxLayout()
+        self.label_layers = QtWidgets.QLabel(self.dockWidgetContents)
+        font = QtGui.QFont()
+        font.setFamily("Arial Narrow")
+        font.setBold(True)
+        self.label_layers.setFont(font)
+        self.label_layers.setText("Layers in Project:")
+        self.layerHeaderLayout.addWidget(self.label_layers)
+        self.mainLayout.addLayout(self.layerHeaderLayout)
+
+        self.layerScrollArea = QtWidgets.QScrollArea(self.dockWidgetContents)
+        self.layerScrollArea.setMinimumSize(QtCore.QSize(0, 90))
+        self.layerScrollArea.setMaximumSize(QtCore.QSize(16777215, 90))
+        self.layerScrollArea.setStyleSheet(
+            "QScrollArea { border: 1px solid #D9D9D9; border-radius: 5px; background-color: #F9F9F9; }"
+            "QScrollBar:vertical { border: none; background: transparent; width: 6px; }"
+            "QScrollBar::handle:vertical { background: #C1C1C1; border-radius: 3px; }"
+        )
+        self.layerScrollArea.setWidgetResizable(True)
+        self.layerListWidget = QtWidgets.QWidget()
+        self.layerListLayout = QtWidgets.QVBoxLayout(self.layerListWidget)
+        self.layerListLayout.setContentsMargins(5, 5, 5, 5)
+        self.layerListLayout.setSpacing(4)
+        self.layerListLayout.addStretch()
+        self.layerScrollArea.setWidget(self.layerListWidget)
+        self.mainLayout.addWidget(self.layerScrollArea)
+
         # --- Input ---
         self.inputLayout = QtWidgets.QHBoxLayout()
         self.inputLayout.setObjectName("inputLayout")
@@ -140,9 +168,8 @@ class Ui_DockWidget(object):
 
         # --- Status Label ---
         self.status_label = QtWidgets.QLabel(self.dockWidgetContents)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Minimum)
-        self.status_label.setSizePolicy(sizePolicy)
-        self.status_label.setMaximumSize(QtCore.QSize(700, 600))
+        self.status_label.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.status_label.setMaximumSize(QtCore.QSize(16777215, 600))
         font = QtGui.QFont()
         font.setFamily("Cascadia Code")
         font.setItalic(True)

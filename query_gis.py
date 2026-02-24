@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "https://querygis.com/report-error"
+REPORT_ENDPOINT = "http://localhost:5000/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -266,20 +266,41 @@ def _send_error_report(user_query: str,
     except Exception:
         pass
 
+import random
+
 class WaveProgressManager:
-    def __init__(self, update_callback):
+    def __init__(self, update_callback, eta_callback=None):
         self.update_callback = update_callback
+        self.eta_callback = eta_callback
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self._animate_wave)
         self.wave_position = 0
         self.current_message = ""
         self.is_active = False
+        self.start_time = None
+        
+        self.dynamic_messages = [
+            "Analyzing project layers...",
+            "Syncing with GIS engine...",
+            "Optimizing spatial logic...",
+            "Extracting metadata context...",
+            "Formatting query results...",
+            "Applying geometry constraints...",
+            "Resolving coordinate systems...",
+            "Preparing AI execution environment...",
+            "Generating Python code blocks...",
+            "Refining response structure..."
+        ]
+        self.message_cycle_timer = QTimer()
+        self.message_cycle_timer.timeout.connect(self._cycle_message)
 
     def start_wave(self, message="Processing"):
         self.current_message = message
         self.is_active = True
         self.wave_position = 0
+        self.start_time = time.time()
         self.animation_timer.start(200)
+        self.message_cycle_timer.start(3000)  # Cycle descriptive text every 3 seconds
         self._update_display()
 
     def update_message(self, message):
@@ -290,13 +311,25 @@ class WaveProgressManager:
     def stop_wave(self, final_message="Complete"):
         self.is_active = False
         self.animation_timer.stop()
+        self.message_cycle_timer.stop()
         self.update_callback(final_message, True)
+        if self.eta_callback:
+            self.eta_callback("", False) # Hide ETA
 
     def _animate_wave(self):
         if not self.is_active:
             return
         self.wave_position = (self.wave_position + 1) % 8
         self._update_display()
+        
+        if self.eta_callback and self.start_time:
+            elapsed = time.time() - self.start_time
+            self.eta_callback(f"Elapsed: {elapsed:.1f}s", True)
+
+    def _cycle_message(self):
+        if self.is_active:
+            # Randomly pick a descriptive message to keep the UI alive
+            self.current_message = random.choice(self.dynamic_messages)
 
     def _update_display(self):
         wave_chars = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
@@ -337,7 +370,7 @@ class BackendWorker(QThread):
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="https://querygis.com/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -376,11 +409,11 @@ class BackendWorker(QThread):
             if self._is_cancelled:
                 return
 
-            self.step_update.emit("Connecting to backend server")
+            self.step_update.emit("Connecting to QueryGIS server...")
             if self._is_cancelled:
                 return
 
-            self.step_update.emit("Sending request to server")
+            self.step_update.emit("Dispatched request to AI engine")
             try:
                 resp = session.post(
                     self.backend_url,
@@ -397,7 +430,7 @@ class BackendWorker(QThread):
                             text = str(data)
                     except Exception:
                         text = resp.text
-                    self.step_update.emit("Processing response")
+                    self.step_update.emit("Synthesizing response...")
                     self.finished.emit(text)
                 else:
                     try:
@@ -536,6 +569,7 @@ class QueryGIS(QObject):
         self.default_status_color = "#F0F0F0"
         self.success_status_color = "#66FF66"
         self.error_status_color = "#FF3333"
+        self.warning_status_color = "#FFA500" # Orange for retries
 
         self.ui = None
         self.worker = None
@@ -585,7 +619,7 @@ class QueryGIS(QObject):
         for line in (stdout_output or "").split('\n'):
             line = line.strip()
             if '❌' in line:
-                clean_line = line.replace('❌', '').replace('오류 발생:', '').strip()
+                clean_line = line.replace('❌', '').replace('Error occurred:', '').strip()
                 if clean_line:
                     return clean_line
         
@@ -604,11 +638,11 @@ class QueryGIS(QObject):
                 if line and not line.startswith(' ') and "SOFT_ERROR" not in line:
                     return line
         
-        return "코드 실행 중 오류가 발생했습니다"
+        return "An error occurred during code execution"
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "https://querygis.com/fix-code"
+        FIX_URL = "http://localhost:5000/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -644,12 +678,12 @@ class QueryGIS(QObject):
             output_lines = [l.strip() for l in current_output.split('\n') if l.strip()]
             last_meaningful_line = output_lines[-1] if output_lines else ""
             
-            success_keywords = ["✓", "완료!", "성공", "Complete", "finished", "successfully"]
+            success_keywords = ["✓", "Done!", "Success", "Complete", "finished", "successfully"]
             if any(s in last_meaningful_line for s in success_keywords):
                 self._last_soft_error_info = None
                 return 
             
-            fail_keywords = ["❌", "실패", "Error:", "Exception", "찾을 수 없습니다", "오류", "Traceback"]
+            fail_keywords = ["❌", "Fail", "Error:", "Exception", "Not found", "Error", "Traceback"]
             has_failure_sign = any(f in last_meaningful_line for f in fail_keywords)
             has_traceback = "Traceback (most recent" in current_output
 
@@ -703,17 +737,43 @@ class QueryGIS(QObject):
                 sys.stdout.seek(0)
                 stdout_output = sys.stdout.read()
 
+            # Limit stdout and qgis log size for the prompt
+            limited_stdout = (stdout_output or "")[-500:] if stdout_output and len(stdout_output) > 500 else (stdout_output or "")
+            limited_qgis = (qgis_errors or "")[-500:] if qgis_errors and len(qgis_errors) > 500 else (qgis_errors or "")
+
             full_error_for_ai = f"""=== ERROR DETECTED ===
 Error Type: {type(e).__name__}
 Message: {str(e)}
 
-=== EXECUTION OUTPUT ===
-{stdout_output}
+=== EXECUTION OUTPUT (Last 500 chars) ===
+{limited_stdout}
 
-=== QGIS LOG ===
-{qgis_errors}
+=== QGIS LOG (Last 500 chars) ===
+{limited_qgis}
 """
-            error_for_fix = full_error_for_ai[-1000:] if len(full_error_for_ai) > 1000 else full_error_for_ai
+            error_for_fix = full_error_for_ai
+
+            # Report the failure that triggered self-correction
+            try:
+                _send_error_report(
+                    user_query=user_input,
+                    context_text="",
+                    generated_code=code,
+                    error_message=full_error_for_ai,
+                    model_name="gemini-3-flash-preview",
+                    phase="execution_failure",
+                    metadata={
+                        "plugin_version": "QueryGIS-Plugin/1.3",
+                        "run_id": self._current_run_id,
+                        "attempt": self._request_attempt or None,
+                        "fix_round": retry_count + 1,
+                        "is_retry_trigger": True
+                    },
+                    query_gis_instance=self
+                )
+            except Exception:
+                pass
+
             broken_lines = code.splitlines()
             if len(broken_lines) > 500:
                 broken_code_for_fix = "\n".join(broken_lines[:500])
@@ -724,7 +784,7 @@ Message: {str(e)}
                 context_for_fix = self._build_context_text(fix_ctx)
             except Exception:
                 context_for_fix = context
-            self.update_wave_message(f"자동 수정 중... ({retry_count + 1}/{MAX_RETRIES})")
+            self.update_wave_message(f"Auto-correcting logic... ({retry_count + 1}/{MAX_RETRIES})")
 
             thinking_strategy = "LOW" if retry_count == 0 else "HIGH"
             
@@ -800,11 +860,20 @@ Message: {str(e)}
     def start_wave_progress(self, message="Processing"):
         if not self.ui:
             return
+            
+        # Lock the layer list interaction
+        if self.iface and self.iface.layerTreeView():
+            self.iface.layerTreeView().setEnabled(False)
+            
         if not self.wave_manager:
-            self.wave_manager = WaveProgressManager(self._update_wave_ui)
+            self.wave_manager = WaveProgressManager(self._update_wave_ui, self._update_eta_ui)
         if not self.ui.progressBar.isVisible():
             self.ui.progressBar.setVisible(True)
         self.ui.progressBar.setRange(0, 0)
+        
+        # Change cursor to wait during request
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        
         self.wave_manager.start_wave(message)
 
     def update_wave_message(self, message, progress=None):
@@ -817,6 +886,10 @@ Message: {str(e)}
         self.wave_manager.update_message(str(message))
 
     def stop_wave_progress(self, final_message="Complete"):
+        # Unlock the layer list interaction
+        if self.iface and self.iface.layerTreeView():
+            self.iface.layerTreeView().setEnabled(True)
+            
         if self.wave_manager:
             self.wave_manager.stop_wave(final_message)
         if self.ui:
@@ -832,6 +905,17 @@ Message: {str(e)}
         if is_final:
             self.ui.progressBar.setRange(0, 100)
             self.ui.progressBar.setValue(100)
+            # Restore cursor when final
+            while QApplication.overrideCursor():
+                QApplication.restoreOverrideCursor()
+
+    def _update_eta_ui(self, message, visible):
+        if not self.ui:
+            return
+        if self.ui.etaLabel.text() != message:
+            self.ui.etaLabel.setText(message)
+        if self.ui.etaLabel.isVisible() != visible:
+            self.ui.etaLabel.setVisible(visible)
 
     def hide_progress(self):
         if self.wave_manager:
@@ -912,6 +996,17 @@ Message: {str(e)}
             if saved_api_key:
                 self.ui.line_apikey.setText(saved_api_key)
 
+            # Refresh and Connect Layer List signals
+            self.refresh_layer_list()
+            QgsProject.instance().layersAdded.connect(self.refresh_layer_list)
+            QgsProject.instance().layersRemoved.connect(self.refresh_layer_list)
+            self.iface.currentLayerChanged.connect(self.refresh_layer_list)
+            
+            # Connect to selection model for multi-selection updates
+            tree_view = self.iface.layerTreeView()
+            if tree_view and tree_view.selectionModel():
+                tree_view.selectionModel().selectionChanged.connect(self.refresh_layer_list)
+
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
 
         self.dockwidget.show()
@@ -973,7 +1068,7 @@ Message: {str(e)}
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             label.setStyleSheet(
                 "background-color: #1AC85C; color: white; border: none; border-radius: 10px; "
-                "padding: 8px; font-family: '맑은 고딕'; font-size: 12px;"
+                "padding: 8px; font-family: 'Segoe UI', sans-serif; font-size: 12px;"
             )
             layout.addStretch()
             layout.addWidget(label)
@@ -1045,6 +1140,91 @@ Message: {str(e)}
             sa.viewport().setUpdatesEnabled(True)
             sa.setUpdatesEnabled(True)
         QTimer.singleShot(100, self.scroll_to_bottom)
+
+    def refresh_layer_list(self):
+        if not self.ui or not hasattr(self.ui, 'layerListLayout'):
+            return
+            
+        # Update header label
+        if hasattr(self.ui, 'label_layers'):
+            self.ui.label_layers.setText("Selected Layers (Target):")
+
+        # Clear existing widgets (keeping the spacer at the end)
+        layout = self.ui.layerListLayout
+        while layout.count() > 1:
+            item = layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        layers = []
+        try:
+            # Use layerTreeView to get all selected layers (multi-selection support)
+            layers = self.iface.layerTreeView().selectedLayers()
+        except Exception:
+            # Fallback to single active layer if tree view fails
+            active_layer = self.iface.activeLayer()
+            if active_layer:
+                layers = [active_layer]
+        
+        if not layers:
+            empty_label = QLabel("Please select layers to operate on")
+            empty_label.setStyleSheet("""
+                QLabel {
+                    padding: 8px;
+                    color: #999;
+                    font-style: italic;
+                    font-family: 'Segoe UI', sans-serif;
+                    font-size: 11px;
+                }
+            """)
+            layout.insertWidget(layout.count() - 1, empty_label)
+            return
+
+        active_layer = self.iface.activeLayer() # Used for highlighting the most active one
+        
+        for lyr in layers:
+            lyr_frame = QWidget()
+            lyr_layout = QHBoxLayout(lyr_frame)
+            lyr_layout.setContentsMargins(4, 2, 4, 2)
+            lyr_layout.setSpacing(8)
+            
+            # Type Icon Label
+            source = lyr.source().lower()
+            provider = ""
+            if hasattr(lyr, "dataProvider") and lyr.dataProvider():
+                provider = lyr.dataProvider().name().lower()
+            
+            is_table = any(ext in source for ext in [".csv", ".xlsx", ".xls", ".txt"]) or provider == "delimitedtext"
+            
+            if is_table:
+                type_symbol = "📊"
+            elif lyr.type() == QgsMapLayer.VectorLayer:
+                type_symbol = "🟦"
+            elif lyr.type() == QgsMapLayer.RasterLayer:
+                type_symbol = "🟩"
+            elif lyr.type() == getattr(QgsMapLayer, 'PointCloudLayer', 3):
+                type_symbol = "☁️"
+            else:
+                type_symbol = "📁"
+            
+            type_label = QLabel(type_symbol)
+            lyr_layout.addWidget(type_label)
+            
+            # Layer Name Label (Static)
+            name_label = QLabel(lyr.name())
+            name_label.setStyleSheet("""
+                QLabel {
+                    padding: 4px 2px;
+                    border: none;
+                    background-color: transparent;
+                    font-family: 'Segoe UI', sans-serif;
+                    font-size: 11px;
+                    color: #333;
+                }
+            """)
+            lyr_layout.addWidget(name_label, 1)
+            
+            layout.insertWidget(layout.count() - 1, lyr_frame)
 
     def scroll_to_bottom(self):
         if not self.ui:
@@ -1186,9 +1366,9 @@ Message: {str(e)}
             self.append_chat_message("assistant-print", display_text.strip())
 
         if self.ui:
-            self.ui.status_label.setText("Response processed")
+            self.ui.status_label.setText("Intelligence received")
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
-            self.stop_wave_progress("Done")
+            self.stop_wave_progress("Finished")
             self.ui.btn_ask.setEnabled(True)
         if self._pending_attempt_start:
             self._pending_attempt_start = False
@@ -1258,7 +1438,7 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="https://querygis.com/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
@@ -1317,7 +1497,7 @@ Message: {str(e)}
     
     def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
         """Syntax Error 전용 Fix 서버 호출"""
-        FIX_URL = "https://querygis.com/fix-code"
+        FIX_URL = "http://localhost:5000/fix-code"
         
         api_key = self.load_api_key()
         payload = {
@@ -1449,6 +1629,8 @@ Message: {str(e)}
                     if self._request_attempt == 1:
                         if self._advance_attempt(err_msg):
                             self._execution_advance_triggered = True
+                            if self.ui:
+                                self.ui.status_label.setStyleSheet(f"background-color: {self.warning_status_color}; color: black;")
                             return False
                     if self._request_attempt <= 2:
                         try:
@@ -1466,11 +1648,11 @@ Message: {str(e)}
                 
                 self.append_chat_message("assistant-print", err_msg)
                 if self.ui:
-                    self.ui.status_label.setText("Syntax Error")
+                    self.ui.status_label.setText("Execution failed")
                     self.ui.status_label.setStyleSheet(
                         f"background-color: {self.error_status_color}; color: white;"
                     )
-                self.stop_wave_progress("Syntax error occurred")
+                self.stop_wave_progress("Analysis failed")
                 return False
         
         main_buffer = io.StringIO()
@@ -1496,7 +1678,7 @@ Message: {str(e)}
             final_output = main_buffer.getvalue().strip()
             elapsed = time.time() - start_time
             
-            self.ui.status_label.setText("Code execution succeeded!")
+            self.ui.status_label.setText("Success!")
             self.ui.status_label.setStyleSheet(
                 f"background-color: {self.success_status_color}; color: black;"
             )
@@ -1522,7 +1704,7 @@ Message: {str(e)}
             if final_output:
                 self.append_chat_message("assistant-print", f"Output:\n{final_output}")
             
-            self.stop_wave_progress("Execution completed!")
+            self.stop_wave_progress("Task Complete")
             self._add_execution_result_to_chat(True, elapsed)
             return True
         
@@ -1532,10 +1714,18 @@ Message: {str(e)}
             partial_output = main_buffer.getvalue().strip()
             self._last_execution_error_message = tb_text
             
-            self.ui.status_label.setText("Execution Error")
-            self.ui.status_label.setStyleSheet(
-                f"background-color: {self.error_status_color}; color: white;"
-            )
+            # If we just triggered a major attempt advance, don't show error UI yet
+            if self._execution_advance_triggered:
+                if self.ui:
+                    self.ui.status_label.setText("Scaling context & Retrying...")
+                    self.ui.status_label.setStyleSheet(f"background-color: {self.warning_status_color}; color: black;")
+                return False
+
+            if self.ui:
+                self.ui.status_label.setText("Execution failed")
+                self.ui.status_label.setStyleSheet(
+                    f"background-color: {self.error_status_color}; color: white;"
+                )
             
             error_display = f"Error:\n{tb_text}"
             if partial_output:
@@ -1563,7 +1753,7 @@ Message: {str(e)}
                 query_gis_instance=self
             )
             
-            self.stop_wave_progress("Error occurred")
+            self.stop_wave_progress("Analysis failed")
             self._add_execution_result_to_chat(False, elapsed)
             return False
         
@@ -1688,8 +1878,8 @@ Message: {str(e)}
         if found_layer:
             return found_layer
 
-        print(f"레이어 '{layer_name}'를 찾을 수 없습니다.")
-        print("사용 가능한 레이어:")
+        print(f"Layer '{layer_name}' not found.")
+        print("Available layers:")
         for layer in QgsProject.instance().mapLayers().values():
             print(f"  - {layer.name()}")
 
@@ -1977,44 +2167,63 @@ Message: {str(e)}
     def _collect_qgis_context_active(self, max_rows=5):
         p = QgsProject.instance()
         layers_info = []
+        
+        selected_layers = []
         try:
-            active = self.iface.activeLayer() if self.iface else None
+            if self.iface:
+                # Get all selected layers from the tree view
+                selected_layers = self.iface.layerTreeView().selectedLayers()
         except Exception:
-            active = None
-        if not active:
+            selected_layers = []
+
+        # Fallback 1: Active Layer if no selection
+        if not selected_layers:
+            try:
+                active = self.iface.activeLayer() if self.iface else None
+                if active:
+                    selected_layers = [active]
+            except Exception:
+                pass
+
+        # Fallback 2: First layer in project
+        if not selected_layers:
             try:
                 all_layers = list(p.mapLayers().values())
-                active = all_layers[0] if all_layers else None
+                if all_layers:
+                    selected_layers = [all_layers[0]]
             except Exception:
-                active = None
+                pass
 
-        if active:
+        for lyr in selected_layers:
+            if not lyr:
+                continue
+            
             try:
                 info = {
-                    "name": active.name(),
-                    "type": ("vector" if active.type() == QgsMapLayer.VectorLayer
-                            else "raster" if active.type() == QgsMapLayer.RasterLayer
-                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == active.type()
+                    "name": lyr.name(),
+                    "type": ("vector" if lyr.type() == QgsMapLayer.VectorLayer
+                            else "raster" if lyr.type() == QgsMapLayer.RasterLayer
+                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
                             else "unknown"),
-                    "crs": active.crs().authid() if hasattr(active, "crs") else None,
-                    "provider": getattr(active, "providerType", lambda: None)(),
-                    "source": getattr(active, "source", lambda: None)(),
-                    "metadata": self._collect_layer_metadata(active)
+                    "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
+                    "provider": getattr(lyr, "providerType", lambda: None)(),
+                    "source": getattr(lyr, "source", lambda: None)(),
+                    "metadata": self._collect_layer_metadata(lyr)
                 }
-                if isinstance(active, QgsVectorLayer):
-                    info["geometry"] = QgsWkbTypes.displayString(active.wkbType())
-                    info["feature_count"] = active.featureCount()
+                if isinstance(lyr, QgsVectorLayer):
+                    info["geometry"] = QgsWkbTypes.displayString(lyr.wkbType())
+                    info["feature_count"] = lyr.featureCount()
                     info["is_csv"] = (str(info.get("provider") or "").lower() == "delimitedtext")
-                    info["fields"] = [f.name() for f in active.fields()]
-                    info["feature_samples"] = self._collect_vector_feature_rows(active, max_rows=max_rows)
+                    info["fields"] = [f.name() for f in lyr.fields()]
+                    info["feature_samples"] = self._collect_vector_feature_rows(lyr, max_rows=max_rows)
                     try:
-                        ext = active.extent()
+                        ext = lyr.extent()
                         info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
                     except Exception:
                         pass
-                elif isinstance(active, QgsRasterLayer):
+                elif isinstance(lyr, QgsRasterLayer):
                     try:
-                        ext = active.extent()
+                        ext = lyr.extent()
                         info["extent"] = [ext.xMinimum(), ext.yMinimum(), ext.xMaximum(), ext.yMaximum()]
                         info["extent_corners"] = {
                             "top_left": [ext.xMinimum(), ext.yMaximum()],
@@ -2025,9 +2234,9 @@ Message: {str(e)}
                     except Exception:
                         pass
                     try:
-                        info["band_count"] = active.bandCount()
-                        info["width"] = active.width()
-                        info["height"] = active.height()
+                        info["band_count"] = lyr.bandCount()
+                        info["width"] = lyr.width()
+                        info["height"] = lyr.height()
                     except Exception:
                         pass
                 layers_info.append(info)
@@ -2174,9 +2383,9 @@ Message: {str(e)}
         if execution_success:
             last = self.chat_history[-1] if self.chat_history else None
             if not last or last.get("role") != "assistant-print":
-                self.append_chat_message("assistant-print", f"Execution complete · {time_str}")
+                self.append_chat_message("assistant-print", f"Finished in {time_str}")
         else:
-            self.append_chat_message("assistant-print", f"Execution failed · {time_str}")
+            self.append_chat_message("assistant-print", f"Failed after {time_str}")
 
     def process_query(self):
         if not self.ui:
