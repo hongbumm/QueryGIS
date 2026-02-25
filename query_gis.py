@@ -473,37 +473,36 @@ class BackendWorker(QThread):
             if session:
                 session.close()
 
+class UiSafeBridge(QObject):
+    requested = pyqtSignal(str, object) # message, progress
+
 class _UIFeedback(QgsProcessingFeedback):
-    def __init__(self, update_fn, label="Working"):
+    def __init__(self, bridge, label="Working"):
         super().__init__()
-        self._update = update_fn
+        self._bridge = bridge
         self._label = label
     def setProgress(self, p):
         super().setProgress(p)
-        # Update text and numerical progress
-        self._update(f"{self._label} {p:.0f}%", progress=p)
-        # Prevent UI freeze by processing events
-        QApplication.processEvents()
+        # Safely request UI update via signal
+        self._bridge.requested.emit(f"{self._label} {p:.0f}%", p)
     def pushInfo(self, info):
         super().pushInfo(info)
         if info:
-            self._update(str(info))
-            QApplication.processEvents()
+            self._bridge.requested.emit(str(info), None)
 
 class _RunProgressProxy:
-    def __init__(self, ui_update_fn, scope=None):
-        self._update = ui_update_fn
+    def __init__(self, bridge, scope=None):
+        self._bridge = bridge
         self._scope = scope or {}
         self._calls_seen = 0
         self._calls_done = 0
         self._last_ui_ms = 0
     def _maybe_update(self, text, progress=None):
         now = int(time.time()*1000)
-        # Keep UI responsive
-        QApplication.processEvents()
-        if now - self._last_ui_ms >= 100: # Increased frequency
+        # Throttled UI updates via signal
+        if now - self._last_ui_ms >= 200: 
             self._last_ui_ms = now
-            self._update(text, progress=progress)
+            self._bridge.requested.emit(text, progress)
     def wrap(self, real_run):
         def _wrapped(alg_id, params, context=None, feedback=None, **kwargs):
             # If AI code didn't provide feedback, inject our UI feedback if available in scope
@@ -609,6 +608,9 @@ class QueryGIS(QObject):
         self._execution_advance_triggered = False
         self._pending_attempt_start = False
 
+        # UI Bridge for thread-safe/re-entrancy-safe updates
+        self.ui_bridge = UiSafeBridge()
+        self.ui_bridge.requested.connect(self.update_wave_message, Qt.QueuedConnection)
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
             return
@@ -892,8 +894,6 @@ Message: {str(e)}
             return
         
         now = int(time.time() * 1000)
-        # UI responsiveness
-        QApplication.processEvents()
 
         if progress is not None:
             if self.ui:
@@ -947,7 +947,6 @@ Message: {str(e)}
             self.ui.progressBar.setValue(0)
             if self.ui.status_label.text() != "Status: Ready":
                 self.ui.status_label.setText("Status: Ready")
-            QApplication.processEvents()
 
     def tr(self, message):
         return QCoreApplication.translate('QueryGIS', message)
@@ -1251,7 +1250,6 @@ Message: {str(e)}
     def scroll_to_bottom(self):
         if not self.ui:
             return
-        QApplication.processEvents()
         sb = self.ui.chatScrollArea.verticalScrollBar()
         if sb:
             sb.setValue(sb.maximum())
@@ -1824,10 +1822,11 @@ Message: {str(e)}
             'shorten_layer_name': self.shorten_layer_name
         }
         
-        scope['processing_feedback'] = _UIFeedback(self.update_wave_message, label="Processing...")
+        # Prepare safely-wrapped processing environment
+        scope['processing_feedback'] = _UIFeedback(self.ui_bridge, label="Processing...")
         proc_mod = scope['processing']
         if proc_mod and hasattr(proc_mod, 'run'):
-            proxy = _RunProgressProxy(self.update_wave_message, scope=scope)
+            proxy = _RunProgressProxy(self.ui_bridge, scope=scope)
             try:
                 scope['_orig_processing_run'] = proc_mod.run
                 proc_mod.run = proxy.wrap(proc_mod.run)
