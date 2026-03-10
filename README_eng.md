@@ -6,7 +6,6 @@
 
 QueryGIS is an AI-powered interface for QGIS that helps GIS analysts, researchers, remote sensing practitioners, and organizations move from intent to execution more naturally and efficiently.
 
-![QueryGIS Logo](./assets/querygis_logo.png)
 
 ## Product Snapshot
 
@@ -17,12 +16,6 @@ QueryGIS helps users interact with QGIS in plain language, generate actionable G
 
 ![QueryGIS Interface](./assets/QueryGIS%20사진%20캡처.png)
 
-## Trust Signals
-
-- AI Champion Top 20
-- TTA Award Winner
-- Built for QGIS Workflows
-- Natural Language GIS Interface
 
 ## What QueryGIS Does
 
@@ -81,15 +74,6 @@ Install the plugin from the provided `.zip` package.
 
 1. `Plugins > Manage and Install Plugins > Install from ZIP`
 2. Open the plugin panel from the toolbar icon after installation
-
-## Usage
-
-1. Enter the provided API key
-2. Enter your query and click `Ask (Ctrl + Enter)`
-3. `Ask and Run` is enabled by default, disable if you do not want immediate execution
-
-![UI_1](./assets/UI_1.png)
-![UI_2](./assets/UI_2.png)
 
 ## Contact
 
