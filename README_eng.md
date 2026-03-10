@@ -1,164 +1,98 @@
+﻿[한국어](README.md) | English
 
-[한국어](README.md) | English
+# QueryGIS
 
-<br>
+**Turn Natural Language into Real QGIS Workflows**
 
+QueryGIS is an AI-powered interface for QGIS that helps GIS analysts, researchers, remote sensing practitioners, and organizations move from intent to execution more naturally and efficiently.
 
-<h1 align="center">
- 👋 Bringing AI to QGIS: <b>QueryGIS</b>
-</h1>
+![QueryGIS Logo](./assets/querygis_logo.png)
 
+## Product Snapshot
 
-<p align="center">
-    <img src="./assets/querygis_logo.png" alt="querygis_logo" width="300" height="auto">
-</p>
+QueryGIS helps users interact with QGIS in plain language, generate actionable GIS steps, and accelerate spatial analysis without constant trial-and-error scripting.
 
+- Official launch target: **Q2 2026 (by June 30, 2026)**
+- Early beta participation: `juseonglee99@3dlabs.co.kr`
 
+![QueryGIS Interface](./assets/QueryGIS%20사진%20캡처.png)
 
+## Trust Signals
 
-<aside>
+- AI Champion Top 20
+- TTA Award Winner
+- Built for QGIS Workflows
+- Natural Language GIS Interface
 
-### **📢 Join the Beta Testers for QueryGIS, a Plugin that Allows You to Command QGIS via Chat-Bot‼️**
+## What QueryGIS Does
 
-<br>
+QueryGIS introduces a more intuitive way to work with QGIS by letting users describe tasks in natural language instead of relying only on menu hunting, fragmented documentation, or fragile scripts.
 
-</aside>
+- **Natural Language Interaction**  
+  Describe your task in plain language and reduce friction.
+- **Actionable GIS Guidance**  
+  Turn vague ideas into concrete steps for analysis, visualization, and data handling.
+- **Faster QGIS Workflows**  
+  Cut repetitive effort and move from intent to execution more efficiently.
 
-## 💁Overview
+### Example Workflows
 
-**QueryGIS is a Plugin that Allows You to Command QGIS via Chat-Bot! 🤖**🙌
+![Real estate analysis example](./assets/부동산%20분석%20예시.png)
+![Wildfire damage analysis example](./assets/산불%20피해%20예시.png)
 
-✅ Improve the ease of access to spatial information for QGIS beginners.
+## Why It Matters
 
-✅ Maximizes work efficiency for professionals using simple, repetitive commands.
+QGIS is powerful, but many workflows still require steep learning curves, repeated scripting effort, and too much searching through tools and documentation. QueryGIS lowers that barrier and supports more accessible, iterative, and efficient geospatial work.
 
-✅ Operate its functions through conversations with a Chat-Bot without mastering every feature of QGIS.
+## Award & Recognition
 
-<br>
+QueryGIS was recognized in the 2025 AI Champion competition, advancing into the Top 20 among 630 participating teams and receiving the Korea Information and Communication Technology Association Award (TTA Award).
 
-### **🎬 Demo Video**
-<p align="center">
-    Click on the image 👇
-</p>
+This recognition reflects both the technical ambition of QueryGIS and its practical potential as an AI-driven interface for real geospatial work.
 
-<p align="center">
-    <a href="https://www.youtube.com/watch?v=x31T7725Njs">
-        <img src="https://img.youtube.com/vi/x31T7725Njs/0.jpg" alt="demo video">
-    </a>
-</p>
+- **630** Participating Teams
+- **Top 20** Finalist Ranking
+- **TTA Award** Official Recognition
 
+![Award](./assets/IMG_4917.JPG)
 
+## Demo
 
-<br>
+- YouTube: https://www.youtube.com/watch?v=yjNUj8UkJz0
 
+## Built for Real Geospatial Tasks
 
-## 🗒️  **Table of Contents**
+- **Spatial Analysis**: buffering, overlays, selection workflows, and analysis-heavy tasks
+- **Raster & Remote Sensing**: multi-step raster operations and preprocessing workflows
+- **Visualization & Styling**: map quality, layer styling, and cartographic presentation
+- **Workflow Acceleration**: reducing repetitive clicks and speeding up day-to-day GIS work
 
-- [👋 Bringing AI to QGIS: QueryGIS](#-bringing-ai-to-qgis-querygis)
-- [💁 Overview](#-overview)
-- [🎬 Demo Video](#-demo-video)
-- [📢 Beta Testing](#-beta-testing)
-  - [📅 Application Deadline](#-application-deadline)
-  - [📩 How to Apply](#-how-to-apply)
-  - [✅ Eligibility](#-eligibility)
-  - [💰 Cost Information](#-cost-information)
-- [🛠️ Installation](#-installation)
-- [🚀 Usage](#-usage)
-  - [⚠️ Precautions](#-precautions)
-  - [🗒️ How to Use](#-how-to-use)
+## Education & Consulting
 
-<br>
+We provide AI-enabled GIS training for spatial information institutions and universities, and we also support AI transition consulting for geospatial teams.
 
+- GIS + AI Foundation Training
+- Institutional Workshops
+- AI Transition Consulting
 
-## 📢 Beta Testing
+## Installation
 
+Install the plugin from the provided `.zip` package.
 
-### 📅 **Application Deadline**
+1. `Plugins > Manage and Install Plugins > Install from ZIP`
+2. Open the plugin panel from the toolbar icon after installation
 
-- **Until March 31, 2025**
-- For inquiries after the deadline, please contact us via email below.
+## Usage
 
-### 📩 **How to Apply**
+1. Enter the provided API key
+2. Enter your query and click `Ask (Ctrl + Enter)`
+3. `Ask and Run` is enabled by default, disable if you do not want immediate execution
 
-- Contact us at `juseonglee99@3dlabs.co.kr`
-- Please include the following details in your inquiry:
-    
-    - Affiliation
-    - Name
-    - Position
-    - Email 
-    - Phone Number (Optional)
+![UI_1](./assets/UI_1.png)
+![UI_2](./assets/UI_2.png)
 
+## Contact
 
-### ✅ **Eligibility**
-
-- No restrictions – open to students and professionals alike.
-- However, participants must agree to complete the beta test survey and execution report.
-
-### 💰 **Cost Information**
-
-- **The beta test and all related costs are 100% free.**
-- Any costs incurred during testing will be covered by **3DLabs.**
-
-**📢 For any inquiries, please contact us at the email below.**
-
-> email : `juseonglee99@3dlabs.co.kr`
-> 
-
-<br>
-
-
-## 🛠️ Installation
-
-
-To use the plugin, you need to download the provided **compressed file (.zip)** and then install it.
-
-1️⃣ In the **`[Plugins] - [Manage and Install Plugins] - [Install from ZIP]`** tab, install the downloaded compressed file.
-
-2️⃣ After installation, click the icon in the plugin toolbar to open the plugin panel.
-
-<br>
-
-
-## 🚀 Usage
-
-
-Here’s an explanation of how to use the plugin. For QGIS version 3.12 or later, you can install and use it by following a common procedure.
-
-### ⚠️ Precautions
-
-- Since the API operates in real-time, an internet connection is required. Issues may occur due to your connection environment or problems on OpenAI’s servers.
-- It may take some time for a response to arrive.
-- If the desired action is not performed, please check the following:
-    - ‘When instructing “this layer,” have you selected (clicked) the intended layer?
-    - Have you specified the layer's name correctly?
-    - Is the coordinate system set correctly?
-    - Is it a function that can be used within QGIS?
-
-### 🗒️ How to Use
-
-- Enter the provided API key.
-
-<p align="center">
-    <img src="./assets/UI_1.png" alt="UI_1">
-</p>
-
-- Enter your query and click the Ask (Ctrl + Enter) button.
-    - `Ask and Run` function is enabled by default. If you do not want immediate execution, please disable it.
-
-
-<p align="center">
-    <img src="./assets/UI_2.png" alt="UI_2">
-</p>
-
-<br>
-
-
-<p align="center">
-    <img src="./assets/3dlabs_logo.png" alt="3dlabs_logo">
-</p>
-
-
-<p align="center">
-    <a href="https://www.3dlabs.co.kr/kor/main/main.html" width="100" height="auto">🌐3DLabs HP</a>
-</p>
+- Beta / Training / Consulting: `juseonglee99@3dlabs.co.kr`
+- GitHub: https://github.com/hongbumm/QueryGIS
+- 3DLabs: https://www.3dlabs.co.kr/kor/main/main.html
