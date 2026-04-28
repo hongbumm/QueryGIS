@@ -1,4 +1,4 @@
-import os, os.path, sys, io, tempfile, traceback, base64, re, time, uuid
+import os, os.path, sys, io, tempfile, traceback, base64, re, time, uuid, http.server, urllib.parse
 import builtins
 import logging
 import requests
@@ -48,7 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-REPORT_ENDPOINT = "https://querygis.com/report-error"
+REPORT_ENDPOINT = "http://localhost:5000/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -365,12 +365,68 @@ class LoggingWorker(QThread):
             if self.session:
                 self.session.close()
 
+class OAuthCallbackWorker(QThread):
+    code_received = pyqtSignal(str)
+
+    def __init__(self, port=5055):
+        super().__init__()
+        self.port = port
+        self._server = None
+
+    def run(self):
+        worker_self = self
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                # Any path is fine as long as 'code' is in parameters
+                query = urllib.parse.urlparse(self.path).query
+                params = urllib.parse.parse_qs(query)
+                
+                print(f"DEBUG: Received request on QGIS loopback: {self.path}")
+                
+                if "code" in params:
+                    code = params["code"][0]
+                    print(f"DEBUG: Code captured! {code[:10]}...")
+                    worker_self.code_received.emit(code)
+                    
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/html; charset=utf-8")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    self.wfile.write("<h2>Login Successful!</h2><p>You can close this window and return to QGIS.</p>".encode("utf-8"))
+                else:
+                    print(f"DEBUG: No code found in params: {params}")
+                    self.send_response(400)
+                    self.end_headers()
+            def log_message(self, *args): pass
+
+        try:
+            # Allow address reuse to avoid 'address already in use' errors on quick restarts
+            http.server.HTTPServer.allow_reuse_address = True
+            self._server = http.server.HTTPServer(("127.0.0.1", self.port), Handler)
+            print(f"DEBUG: Start QGIS local server on port {self.port}")
+            self._server.handle_request() 
+        except Exception as e:
+            print(f"Local server error: {e}")
+        finally:
+            if self._server:
+                self._server.server_close()
+                print("DEBUG: QGIS local server closed")
+
+    def stop(self):
+        if self._server:
+            # handle_request is blocking, so we might need to send a dummy request 
+            # to let it exit if user cancels before login.
+            try:
+                requests.get(f"http://127.0.0.1:{self.port}/cancel", timeout=0.1)
+            except: pass
+            self._server.server_close()
+
 class BackendWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
 
-    def __init__(self, payload, backend_url="https://querygis.com/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
@@ -608,6 +664,9 @@ class QueryGIS(QObject):
         self._execution_advance_triggered = False
         self._pending_attempt_start = False
 
+        self.user_oauth_sub = None
+        self.user_info = {}
+
         # UI Bridge for thread-safe/re-entrancy-safe updates
         self.ui_bridge = UiSafeBridge()
         self.ui_bridge.requested.connect(self.update_wave_message, Qt.QueuedConnection)
@@ -655,7 +714,7 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "https://querygis.com/fix-code"
+        FIX_URL = "http://localhost:5000/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -1008,10 +1067,13 @@ Message: {str(e)}
             self.ui.line_apikey.setEchoMode(QLineEdit.Password)
 
             self.ui.btn_ask.clicked.connect(self.process_query)
+            self.ui.btn_google_login.clicked.connect(self.handle_google_login)
             self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
             self.ui.text_query.installEventFilter(self)
             self.ui.chk_ask_run.setChecked(True)
             self.toggle_ask_run()
+
+            # Optional: Hide API key field if logged in? No, keep it for now.
 
             saved_api_key = self.load_api_key()
             if saved_api_key:
@@ -1432,7 +1494,8 @@ Message: {str(e)}
             "user_input": self._request_user_input,
             "model": self._request_model,
             "mode": mode,
-            "version": "QueryGIS-Plugin/1.5"
+            "version": "QueryGIS-Plugin/1.5",
+            "oauth_sub": self.user_oauth_sub
         }
         if tool_info:
             payload["tool_info"] = tool_info
@@ -1459,7 +1522,7 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="https://querygis.com/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
@@ -1518,7 +1581,7 @@ Message: {str(e)}
     
     def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
         """Syntax Error 전용 Fix 서버 호출"""
-        FIX_URL = "https://querygis.com/fix-code"
+        FIX_URL = "http://localhost:5000/fix-code"
         
         api_key = self.load_api_key()
         payload = {
@@ -2409,6 +2472,77 @@ Message: {str(e)}
         else:
             self.append_chat_message("assistant-print", f"Failed after {time_str}")
 
+    def handle_google_login(self):
+        # If already logged in, this button acts as a Logout button
+        if self.user_oauth_sub:
+            self.handle_logout()
+            return
+
+        port = 5055
+        # Direct Google OAuth 2.0 Credentials (from your screenshot)
+        google_client_id = "918181278454-bm01dsbejngu99eopm8jpo05sc0jr7f6.apps.googleusercontent.com"
+        redirect_uri = f"http://localhost:{port}"
+        
+        # Direct call to Google (skipping Cognito Hosted UI)
+        auth_url = (
+            "https://accounts.google.com/o/oauth2/v2/auth?"
+            f"client_id={google_client_id}&"
+            f"redirect_uri={redirect_uri}&"
+            "response_type=code&"
+            "scope=email%20profile%20openid&"
+            "access_type=offline&"
+            "prompt=select_account"
+        )
+        
+        import webbrowser
+        webbrowser.open(auth_url)
+        
+        if self.ui:
+            self.ui.status_label.setText("Waiting for Google login...")
+        
+        # Start local loopback server
+        if hasattr(self, 'auth_worker') and self.auth_worker.isRunning():
+            self.auth_worker.stop()
+            self.auth_worker.wait()
+            
+        self.auth_worker = OAuthCallbackWorker(port)
+        self.auth_worker.code_received.connect(self.handle_auth_code)
+        self.auth_worker.start()
+
+    def handle_logout(self):
+        self.user_oauth_sub = None
+        self.user_info = {}
+        if self.ui:
+            self.ui.btn_google_login.setText("Google Login")
+            self.ui.status_label.setText("Logged out.")
+        print("DEBUG: User logged out locally")
+
+    def handle_auth_code(self, code):
+        if self.ui:
+            self.ui.status_label.setText("Verifying with Google...")
+        try:
+            # Our backend will now handle both Google exchange and Cognito backfilling
+            resp = requests.post("http://localhost:5000/auth/exchange", 
+                               json={"code": code, "redirect_uri": "http://localhost:5055"},
+                               timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                self.set_user_auth(data.get("sub"), data.get("email"), data.get("name"))
+            else:
+                if self.ui:
+                    self.ui.status_label.setText(f"Exchange failed: {resp.text}")
+        except Exception as e:
+            if self.ui:
+                self.ui.status_label.setText(f"Auth error: {e}")
+        
+    def set_user_auth(self, sub, email, name):
+        self.user_oauth_sub = sub
+        self.user_info = {"email": email, "name": name}
+        if self.ui:
+            # Change button text to Logout
+            self.ui.btn_google_login.setText("Logout")
+            self.ui.status_label.setText(f"Welcome, {name}!")
+
     def process_query(self):
         if not self.ui:
             self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.Critical)
@@ -2438,6 +2572,21 @@ Message: {str(e)}
         self.append_chat_message("user", user_input)
         self.ui.text_query.clear()
         self.ui.btn_ask.setEnabled(False)
+
+        # Check Usage via Backend if logged in
+        if self.user_oauth_sub:
+            try:
+                usage_resp = requests.post("http://localhost:5000/usage/check", 
+                                         json={"oauth_sub": self.user_oauth_sub}, 
+                                         timeout=5)
+                if usage_resp.status_code == 200:
+                    usage_data = usage_resp.json()
+                    if not usage_data.get("can_request", True):
+                        self.handle_error("이번달 사용량 끝남 (Limit Reached)")
+                        return
+                    print(f"[USAGE] {usage_data.get('used')}/{usage_data.get('limit')} used.")
+            except Exception as e:
+                print(f"Usage check failed: {e}")
 
         try:
             model_name = "gemini-3-flash-preview"

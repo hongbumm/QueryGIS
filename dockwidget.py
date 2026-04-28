@@ -16,6 +16,13 @@ class Ui_DockWidget(object):
         self.mainLayout.setObjectName("mainLayout")
 
         # --- Header ---
+        self.topHeaderLayout = QtWidgets.QGridLayout()
+        # To strictly center the logo/title, we use 3 columns
+        self.topHeaderLayout.setColumnStretch(0, 1) # Left expanding
+        self.topHeaderLayout.setColumnStretch(1, 0) # Center fixed
+        self.topHeaderLayout.setColumnStretch(2, 1) # Right expanding
+        self.mainLayout.addLayout(self.topHeaderLayout)
+
         self.headerLayout = QtWidgets.QVBoxLayout()
         self.headerLayout.setObjectName("headerLayout")
         self.icon_img = QtWidgets.QLabel(self.dockWidgetContents)
@@ -37,7 +44,32 @@ class Ui_DockWidget(object):
         self.label_title.setAlignment(QtCore.Qt.AlignCenter)
         self.label_title.setObjectName("label_title")
         self.headerLayout.addWidget(self.label_title, 0, QtCore.Qt.AlignHCenter)
-        self.mainLayout.addLayout(self.headerLayout)
+        # Add center block to column 1
+        self.topHeaderLayout.addLayout(self.headerLayout, 0, 1, QtCore.Qt.AlignCenter)
+
+        # Right block with Google Login button
+        self.btn_google_login = QtWidgets.QPushButton(self.dockWidgetContents)
+        font = QtGui.QFont()
+        font.setFamily("Arial Narrow")
+        font.setBold(True)
+        self.btn_google_login.setFont(font)
+        self.btn_google_login.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.btn_google_login.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                border: 1px solid #dcdcdc;
+                color: #444;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #f8f8f8;
+            }
+        """)
+        self.btn_google_login.setObjectName("btn_google_login")
+        # Align to the top-right
+        self.topHeaderLayout.addWidget(self.btn_google_login, 0, 2, QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
 
         # --- API ---
         self.apiLayout = QtWidgets.QHBoxLayout()
@@ -190,5 +222,6 @@ class Ui_DockWidget(object):
         self.btn_ask.setText(_translate("DockWidget", "Ask\n(Ctrl + Enter)"))
         self.chk_ask_run.setText(_translate("DockWidget", "Ask and Run"))
         self.status_label.setText(_translate("DockWidget", "Status: Ready"))
+        self.btn_google_login.setText(_translate("DockWidget", "Google Login"))
 
 from . import resources
