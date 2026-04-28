@@ -1436,7 +1436,7 @@ Message: {str(e)}
                         model_name="gemini-3-flash-preview",
                         phase="ai_answer",
                         metadata={
-                            "plugin_version": "QueryGIS-Plugin/1.5",
+                            "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                             "run_id": self._current_run_id,
                             "attempt": self._request_attempt or None,
                             "mode": self._last_response_mode or None,
@@ -1583,7 +1583,7 @@ Message: {str(e)}
                     model_name=self._request_model,
                     phase="attempt_start",
                     metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.5",
+                        "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                         "run_id": self._current_run_id,
                         "attempt": 2,
                         "mode": "rag_full"
@@ -1641,7 +1641,7 @@ Message: {str(e)}
                             model_name="gemini-3-flash-preview",
                             phase="syntax_fix",
                             metadata={
-                                "plugin_version": "QueryGIS-Plugin/1.5",
+                                "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                                 "run_id": self._current_run_id,
                                 "attempt": self._request_attempt or None,
                                 "token_count": data.get("token_count")
@@ -1799,7 +1799,7 @@ Message: {str(e)}
                 model_name="gemini-3-flash-preview",
                 phase="execution_result",
                 metadata={
-                    "plugin_version": "QueryGIS-Plugin/1.5",
+                    "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                     "run_id": self._current_run_id,
                     "elapsed_sec": elapsed,
                     "attempt": self._request_attempt or None,
@@ -1849,7 +1849,7 @@ Message: {str(e)}
                 model_name="gemini-3-flash-preview",
                 phase="execution_result",
                 metadata={
-                    "plugin_version": "QueryGIS-Plugin/1.5",
+                    "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                     "run_id": self._current_run_id,
                     "elapsed_sec": elapsed,
                     "final_error": True,
@@ -2642,7 +2642,7 @@ Message: {str(e)}
                 metadata={
                     "model": model_name,
                     "phase": "user_query",
-                    "plugin_version": "QueryGIS-Plugin/1.5",
+                    "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                     "qgis_version": Qgis.QGIS_VERSION,
                     "os": os.name,
                     "run_id": self._current_run_id,
