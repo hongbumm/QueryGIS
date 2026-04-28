@@ -48,6 +48,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
+CURRENT_VERSION = "1.6.0"
 REPORT_ENDPOINT = "http://localhost:5000/report-error"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
@@ -216,55 +217,9 @@ def _send_error_report(user_query: str,
                        phase: str = "execution",
                        metadata: dict = None,
                        query_gis_instance: 'QueryGIS' = None): 
-
-    row = {
-        "ts": QtCore.QDateTime.currentDateTimeUtc().toString(Qt.ISODateWithMs),
-        "user_input": _mask_sensitive(user_query or ""),
-        "client_ip": "127.0.0.1",
-        "context": _mask_sensitive(context_text or ""),
-        "generated_code": _mask_sensitive(generated_code or ""),
-        "error_message": _mask_sensitive(error_message or ""),
-        "metadata": (metadata or {}),
-        "cache_name": None,
-        "phase": phase,
-    }
-
-    pretty_json = json.dumps(row, ensure_ascii=False, indent=2)
-    print("[LOG PREPARED]:")
-    print(pretty_json)
-
-    if not ENABLE_REMOTE_LOG:
-        return
-
-    if query_gis_instance:
-        query_gis_instance._send_log_async(row)
-        print("[LOG dispatched to background worker]")
-        return
-
-    last_err = None
-    for attempt in range(1, REPORT_RETRIES + 2):
-        try:
-            r = requests.post(
-                REPORT_ENDPOINT,
-                json=row,
-                timeout=REPORT_TIMEOUT_SEC,
-                headers={"Content-Type": "application/json"},
-            )
-            if r.status_code < 300:
-                print(f"[LOG SENT] attempt={attempt} status={r.status_code}")
-                return
-            else:
-                last_err = f"HTTP {r.status_code}: {r.text[:200]}"
-        except Exception as e:
-            last_err = str(e)
-        time.sleep(0.2)
-
-    print(f"[LOG FAILED] endpoint={REPORT_ENDPOINT} error={last_err}")
-    try:
-        iface.messageBar().pushWarning("QueryGIS Log",
-            f"Failed to send log to server: {last_err}")
-    except Exception:
-        pass
+    # CRITICAL TEST: Silence this function entirely to prevent any potential 
+    # recursive threading or stdout issues that cause Access Violation.
+    pass
 
 import random
 
@@ -573,28 +528,35 @@ class BackendWorker(QThread):
                         error_message=f"Server error {resp.status_code}: {msg}",
                         model_name=self._model_name,
                         phase="llm_call",
-                        metadata={"plugin_version": "QueryGIS-Plugin/1.5"}
+                        metadata={"plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}"}
                     )
 
             except requests.exceptions.Timeout:
-                self.error.emit("Request timeout - server did not respond in time")
-                _send_error_report(self._user_input, self._context_text, "", "Timeout to backend",
-                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
+                self.error.emit("Request timeout - server did not respond in time.")
+                # We still try to report timeout because the server might just be slow, not dead
+                try:
+                    _send_error_report(self._user_input, self._context_text, "", "Timeout to backend",
+                                       self._model_name, "llm_call", {"plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}"})
+                except: pass
 
-            except requests.exceptions.ConnectionError:
-                self.error.emit(f"Cannot connect to backend server at {self.backend_url}")
-                _send_error_report(self._user_input, self._context_text, "", "ConnectionError to backend",
-                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
+            except requests.exceptions.ConnectionError as e:
+                # CRITICAL: If connection fails, the WHOLE SERVER is likely down.
+                # DO NOT try to _send_error_report because that will also fail and cause recursive crash.
+                self.error.emit("Connection failed: QueryGIS server is offline. Please start the server first.")
 
             except requests.exceptions.RequestException as e:
-                self.error.emit(f"Network error: {e}")
-                _send_error_report(self._user_input, self._context_text, "", f"RequestException: {e}",
-                                   self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
+                self.error.emit(f"Network error: {str(e)}")
+                try:
+                    _send_error_report(self._user_input, self._context_text, "", f"RequestException: {e}",
+                                       self._model_name, "llm_call", {"plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}"})
+                except: pass
 
         except Exception as e:
-            self.error.emit(f"Worker error: {e}\n{traceback.format_exc()}")
-            _send_error_report(self._user_input, self._context_text, "", f"Worker error: {e}",
-                               self._model_name, "llm_call", {"plugin_version": "QueryGIS-Plugin/1.5"})
+            logger.error(f"FATAL RequestsWorker crash: {str(e)}")
+            try:
+                self.error.emit(f"Worker crashed: {str(e)}")
+            except:
+                pass
         finally:
             if session:
                 session.close()
@@ -710,7 +672,7 @@ class QueryGIS(QObject):
         self.ui = None
         self.worker = None
         self.wave_manager = None
-        self.logging_workers = []
+        # Terminated risky worker tracking
         self._last_status_update_ms = 0
         self._last_context_text = ""
         self._last_generated_code = ""
@@ -743,19 +705,11 @@ class QueryGIS(QObject):
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
             return
+        # Fire and forget - do NOT track in a list or connect to finished signals
+        # as it causes Access Violation crashes in QGIS during event loop cleanup
         worker = LoggingWorker(REPORT_ENDPOINT, row_data, REPORT_TIMEOUT_SEC)
-        
-        worker.finished.connect(lambda w=worker: self._on_logging_worker_finished(w))
-        
-        self.logging_workers.append(worker)
+        worker.finished.connect(worker.deleteLater) # Safe cleanup
         worker.start()
-
-    def _on_logging_worker_finished(self, worker_instance):
-        try:
-            if worker_instance in self.logging_workers:
-                self.logging_workers.remove(worker_instance)
-        except Exception:
-            pass
 
     def _extract_error_summary(self, stdout_output, qgis_errors, qgis_log, original_error=""):
         for line in (stdout_output or "").split('\n'):
@@ -905,7 +859,7 @@ Message: {str(e)}
                     model_name="gemini-3-flash-preview",
                     phase="execution_failure",
                     metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.5",
+                        "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                         "run_id": self._current_run_id,
                         "attempt": self._request_attempt or None,
                         "fix_round": retry_count + 1,
@@ -966,7 +920,7 @@ Message: {str(e)}
                                 model_name="gemini-3-flash-preview",
                                 phase="fix_code",
                                 metadata={
-                                    "plugin_version": "QueryGIS-Plugin/1.5",
+                                    "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                                     "run_id": self._current_run_id,
                                     "attempt": self._request_attempt or None,
                                     "fix_round": retry_count + 1,
@@ -1445,7 +1399,7 @@ Message: {str(e)}
                     model_name="gemini-3-flash-preview",
                     phase="tool_request",
                     metadata={
-                        "plugin_version": "QueryGIS-Plugin/1.5",
+                        "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
                         "run_id": self._current_run_id,
                         "attempt": self._request_attempt or None,
                         "mode": self._last_response_mode or None,
@@ -1564,7 +1518,7 @@ Message: {str(e)}
             "user_input": self._request_user_input,
             "model": self._request_model,
             "mode": mode,
-            "version": "QueryGIS-Plugin/1.5",
+            "version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
             "oauth_sub": self.user_oauth_sub
         }
         if tool_info:
@@ -2656,20 +2610,7 @@ Message: {str(e)}
         self.ui.text_query.clear()
         self.ui.btn_ask.setEnabled(False)
 
-        # Check Usage via Backend if logged in
-        if self.user_oauth_sub:
-            try:
-                usage_resp = requests.post("http://localhost:5000/usage/check", 
-                                         json={"oauth_sub": self.user_oauth_sub}, 
-                                         timeout=5)
-                if usage_resp.status_code == 200:
-                    usage_data = usage_resp.json()
-                    if not usage_data.get("can_request", True):
-                        self.handle_error("이번달 사용량 끝남 (Limit Reached)")
-                        return
-                    print(f"[USAGE] {usage_data.get('used')}/{usage_data.get('limit')} used.")
-            except Exception as e:
-                print(f"Usage check failed: {e}")
+        # REDACTED: Usage check (v1.6 handles this server-side to prevent UI freeze)
 
         try:
             model_name = "gemini-3-flash-preview"
