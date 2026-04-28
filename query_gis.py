@@ -392,7 +392,77 @@ class OAuthCallbackWorker(QThread):
                     self.send_header("Content-type", "text/html; charset=utf-8")
                     self.send_header("Connection", "close")
                     self.end_headers()
-                    self.wfile.write("<h2>Login Successful!</h2><p>You can close this window and return to QGIS.</p>".encode("utf-8"))
+                    
+                    html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1">
+                        <title>QueryGIS Login Successful</title>
+                        <style>
+                            body {
+                                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                                background-color: #f4f7f9;
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                height: 100vh;
+                                margin: 0;
+                            }
+                            .card {
+                                background: white;
+                                padding: 40px;
+                                border-radius: 12px;
+                                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+                                text-align: center;
+                                max-width: 400px;
+                                width: 90%;
+                                animation: fadeIn 0.6s ease-out;
+                            }
+                            @keyframes fadeIn {
+                                from { opacity: 0; transform: translateY(20px); }
+                                to { opacity: 1; transform: translateY(0); }
+                            }
+                            .icon {
+                                color: #2ecc71;
+                                font-size: 64px;
+                                margin-bottom: 20px;
+                            }
+                            h1 {
+                                color: #2c3e50;
+                                margin-bottom: 10px;
+                                font-size: 24px;
+                            }
+                            p {
+                                color: #7f8c8d;
+                                font-size: 16px;
+                                line-height: 1.5;
+                            }
+                            .btn-close {
+                                margin-top: 30px;
+                                display: inline-block;
+                                background-color: #2c3e50;
+                                color: white;
+                                padding: 12px 30px;
+                                border-radius: 30px;
+                                text-decoration: none;
+                                font-weight: 600;
+                                font-size: 16px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="card">
+                            <div class="icon">✓</div>
+                            <h1>Login Successful!</h1>
+                            <p>You have successfully authenticated with QueryGIS.</p>
+                            <div class="btn-close">Please close this window and return to QGIS</div>
+                        </div>
+                    </body>
+                    </html>
+                    """
+                    self.wfile.write(html.encode("utf-8"))
                 else:
                     print(f"DEBUG: No code found in params: {params}")
                     self.send_response(400)
@@ -2479,19 +2549,18 @@ Message: {str(e)}
             return
 
         port = 5055
-        # Direct Google OAuth 2.0 Credentials (from your screenshot)
-        google_client_id = "918181278454-bm01dsbejngu99eopm8jpo05sc0jr7f6.apps.googleusercontent.com"
+        cognito_domain = "ap-northeast-2jv0sbpw92.auth.ap-northeast-2.amazoncognito.com"
+        # Using the Client ID from the React example provided by user
+        client_id = "5ng2ng7bfttoea1ij4egjeru4b" 
         redirect_uri = f"http://localhost:{port}"
         
-        # Direct call to Google (skipping Cognito Hosted UI)
         auth_url = (
-            "https://accounts.google.com/o/oauth2/v2/auth?"
-            f"client_id={google_client_id}&"
+            f"https://{cognito_domain}/login?"
+            f"client_id={client_id}&"
+            f"response_type=code&"
+            f"scope=email%20openid%20profile&"
             f"redirect_uri={redirect_uri}&"
-            "response_type=code&"
-            "scope=email%20profile%20openid&"
-            "access_type=offline&"
-            "prompt=select_account"
+            f"identity_provider=Google"
         )
         
         import webbrowser
@@ -2515,6 +2584,12 @@ Message: {str(e)}
         if self.ui:
             self.ui.btn_google_login.setText("Google Login")
             self.ui.status_label.setText("Logged out.")
+            self.ui.label_welcome_user.setText("") # Clear welcome message
+            # Reset status background
+            self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; padding: 5px;")
+            # Show API Key input again
+            self.ui.label_api.show()
+            self.ui.line_apikey.show()
         print("DEBUG: User logged out locally")
 
     def handle_auth_code(self, code):
@@ -2539,9 +2614,17 @@ Message: {str(e)}
         self.user_oauth_sub = sub
         self.user_info = {"email": email, "name": name}
         if self.ui:
-            # Change button text to Logout
+            # Update labels
             self.ui.btn_google_login.setText("Logout")
-            self.ui.status_label.setText(f"Welcome, {name}!")
+            self.ui.label_welcome_user.setText(f"Welcome, {email}")
+            
+            # Update status bar with Sub ID and Green background
+            self.ui.status_label.setText(f"Welcome, your ID is {sub}")
+            self.ui.status_label.setStyleSheet("background-color: #d4edda; color: #155724; padding: 5px; border-radius: 4px;")
+            
+            # Hide API Key input (server-side key will be used)
+            self.ui.label_api.hide()
+            self.ui.line_apikey.hide()
 
     def process_query(self):
         if not self.ui:

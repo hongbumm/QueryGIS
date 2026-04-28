@@ -47,7 +47,21 @@ class Ui_DockWidget(object):
         # Add center block to column 1
         self.topHeaderLayout.addLayout(self.headerLayout, 0, 1, QtCore.Qt.AlignCenter)
 
-        # Right block with Google Login button
+        # Right block with Google Login button and Welcome message
+        self.rightTopLayout = QtWidgets.QVBoxLayout()
+        self.rightTopLayout.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
+        self.rightTopLayout.setSpacing(2)
+
+        self.label_welcome_user = QtWidgets.QLabel(self.dockWidgetContents)
+        font = QtGui.QFont()
+        font.setFamily("Arial Narrow")
+        font.setPointSize(9)
+        self.label_welcome_user.setFont(font)
+        self.label_welcome_user.setStyleSheet("color: #666; margin-bottom: 2px;")
+        self.label_welcome_user.setText("") # Hidden initially
+        self.label_welcome_user.setObjectName("label_welcome_user")
+        self.rightTopLayout.addWidget(self.label_welcome_user, 0, QtCore.Qt.AlignRight)
+
         self.btn_google_login = QtWidgets.QPushButton(self.dockWidgetContents)
         font = QtGui.QFont()
         font.setFamily("Arial Narrow")
@@ -68,8 +82,10 @@ class Ui_DockWidget(object):
             }
         """)
         self.btn_google_login.setObjectName("btn_google_login")
-        # Align to the top-right
-        self.topHeaderLayout.addWidget(self.btn_google_login, 0, 2, QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
+        self.rightTopLayout.addWidget(self.btn_google_login, 0, QtCore.Qt.AlignRight)
+
+        # Align the whole right layout to the top-right
+        self.topHeaderLayout.addLayout(self.rightTopLayout, 0, 2, QtCore.Qt.AlignRight | QtCore.Qt.AlignTop)
 
         # --- API ---
         self.apiLayout = QtWidgets.QHBoxLayout()
