@@ -1,8 +1,11 @@
 import os, os.path, sys, io, tempfile, traceback, base64, re, time, uuid, http.server, urllib.parse
 import builtins
+import ast
 import logging
 import requests
 import json
+import secrets
+import hashlib
 from qgis.utils import iface
 from qgis.core import (
     Qgis,
@@ -17,25 +20,26 @@ from qgis.core import (
 )
 
 try:
-    from qgis.PyQt import QtCore, QtGui, QtWidgets
+    from qgis.PyQt import QtCore, QtGui, QtNetwork, QtWidgets
     from qgis.PyQt.QtCore import (
         QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread,
         pyqtSignal, QEvent, QVariant, QObject
     )
-    from qgis.PyQt.QtGui import QIcon, QColor, QFont
+    from qgis.PyQt.QtGui import QIcon
     from qgis.PyQt.QtWidgets import (
-        QAction, QDockWidget, QLineEdit, QWidget, QHBoxLayout, QLabel,
-        QPushButton, QApplication, QTextEdit
+        QAction, QDockWidget, QWidget, QHBoxLayout, QLabel,
+        QApplication
     )
 except ImportError:
+    from PyQt5 import QtCore, QtGui, QtNetwork
     from PyQt5.QtCore import (
         QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread,
         pyqtSignal, QEvent, QVariant, QObject
     )
-    from PyQt5.QtGui import QIcon, QColor, QFont
+    from PyQt5.QtGui import QIcon
     from PyQt5.QtWidgets import (
-        QAction, QDockWidget, QLineEdit, QWidget, QHBoxLayout, QLabel,
-        QPushButton, QApplication, QTextEdit
+        QAction, QDockWidget, QWidget, QHBoxLayout, QLabel,
+        QApplication
     )
 
 from requests.adapters import HTTPAdapter
@@ -48,8 +52,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.6.0"
-REPORT_ENDPOINT = "http://localhost:5000/report-error"
+CURRENT_VERSION = "1.9.8"
+BACKEND_BASE_URL = "https://querygis.com"
+CHAT_ENDPOINT = f"{BACKEND_BASE_URL}/chat"
+FIX_ENDPOINT = f"{BACKEND_BASE_URL}/fix-code"
+REPORT_ENDPOINT = f"{BACKEND_BASE_URL}/report-error"
+SUBSCRIPTION_USAGE_ENDPOINT = f"{BACKEND_BASE_URL}/subscription/usage"
+OAUTH_REDIRECT_URI = "http://localhost:5055"
+COGNITO_DOMAIN = "querygis-company-payment-auth-250847881209-20260617.auth.ap-northeast-2.amazoncognito.com"
+COGNITO_CLIENT_ID = "7jpb08126rc270cj6ak4ebofer"
+COGNITO_OAUTH_URL = f"https://{COGNITO_DOMAIN}/oauth2"
 REPORT_TIMEOUT_SEC = 5
 REPORT_RETRIES = 2
 
@@ -321,141 +333,141 @@ class LoggingWorker(QThread):
                 self.session.close()
 
 class OAuthCallbackWorker(QThread):
-    code_received = pyqtSignal(str)
+    ready = pyqtSignal()
+    verifying = pyqtSignal()
+    authenticated = pyqtSignal(dict)
+    failed = pyqtSignal(str)
 
-    def __init__(self, port=5055):
+    def __init__(self, port, state, code_verifier):
         super().__init__()
         self.port = port
-        self._server = None
+        self.state = state
+        self.code_verifier = code_verifier
 
     def run(self):
-        worker_self = self
+        code = None
+        callback_error = False
+        expected_state = self.state
+
         class Handler(http.server.BaseHTTPRequestHandler):
+            def setup(self):
+                self.request.settimeout(2)
+                super().setup()
+
             def do_GET(self):
-                # Any path is fine as long as 'code' is in parameters
-                query = urllib.parse.urlparse(self.path).query
-                params = urllib.parse.parse_qs(query)
-                
-                print(f"DEBUG: Received request on QGIS loopback: {self.path}")
-                
-                if "code" in params:
-                    code = params["code"][0]
-                    print(f"DEBUG: Code captured! {code[:10]}...")
-                    worker_self.code_received.emit(code)
-                    
-                    self.send_response(200)
-                    self.send_header("Content-type", "text/html; charset=utf-8")
-                    self.send_header("Connection", "close")
-                    self.end_headers()
-                    
-                    html = """
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1">
-                        <title>QueryGIS Login Successful</title>
-                        <style>
-                            body {
-                                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                                background-color: #f4f7f9;
-                                display: flex;
-                                justify-content: center;
-                                align-items: center;
-                                height: 100vh;
-                                margin: 0;
-                            }
-                            .card {
-                                background: white;
-                                padding: 40px;
-                                border-radius: 12px;
-                                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-                                text-align: center;
-                                max-width: 400px;
-                                width: 90%;
-                                animation: fadeIn 0.6s ease-out;
-                            }
-                            @keyframes fadeIn {
-                                from { opacity: 0; transform: translateY(20px); }
-                                to { opacity: 1; transform: translateY(0); }
-                            }
-                            .icon {
-                                color: #2ecc71;
-                                font-size: 64px;
-                                margin-bottom: 20px;
-                            }
-                            h1 {
-                                color: #2c3e50;
-                                margin-bottom: 10px;
-                                font-size: 24px;
-                            }
-                            p {
-                                color: #7f8c8d;
-                                font-size: 16px;
-                                line-height: 1.5;
-                            }
-                            .btn-close {
-                                margin-top: 30px;
-                                display: inline-block;
-                                background-color: #2c3e50;
-                                color: white;
-                                padding: 12px 30px;
-                                border-radius: 30px;
-                                text-decoration: none;
-                                font-weight: 600;
-                                font-size: 16px;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <div class="card">
-                            <div class="icon">✓</div>
-                            <h1>Login Successful!</h1>
-                            <p>You have successfully authenticated with QueryGIS.</p>
-                            <div class="btn-close">Please close this window and return to QGIS</div>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                    self.wfile.write(html.encode("utf-8"))
-                else:
-                    print(f"DEBUG: No code found in params: {params}")
-                    self.send_response(400)
-                    self.end_headers()
-            def log_message(self, *args): pass
+                nonlocal code, callback_error
+                url = urllib.parse.urlsplit(self.path)
+                params = urllib.parse.parse_qs(url.query)
+                valid = url.path == "/" and params.get("state") == [expected_state]
+                message = b"Invalid QueryGIS login callback."
+                status = 400
+                if valid:
+                    code = params.get("code", [None])[0]
+                    callback_error = not code and "error" in params
+                    if code or callback_error:
+                        status = 200
+                        message = b"Return to QueryGIS to finish signing in."
+
+                self.send_response(status)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(message)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(message)
+
+            def log_message(self, *args):
+                pass
 
         try:
-            # Allow address reuse to avoid 'address already in use' errors on quick restarts
-            http.server.HTTPServer.allow_reuse_address = True
-            self._server = http.server.HTTPServer(("127.0.0.1", self.port), Handler)
-            print(f"DEBUG: Start QGIS local server on port {self.port}")
-            self._server.handle_request() 
-        except Exception as e:
-            print(f"Local server error: {e}")
-        finally:
-            if self._server:
-                self._server.server_close()
-                print("DEBUG: QGIS local server closed")
+            with http.server.HTTPServer(("127.0.0.1", self.port), Handler) as server:
+                server.timeout = 0.25
+                self.ready.emit()
+                deadline = time.monotonic() + 180
+                while not (code or callback_error or self.isInterruptionRequested()) and time.monotonic() < deadline:
+                    server.handle_request()
+        except OSError:
+            self.failed.emit("Could not start the Google sign-in callback. Please try again.")
+            return
 
-    def stop(self):
-        if self._server:
-            # handle_request is blocking, so we might need to send a dummy request 
-            # to let it exit if user cancels before login.
-            try:
-                requests.get(f"http://127.0.0.1:{self.port}/cancel", timeout=0.1)
-            except: pass
-            self._server.server_close()
+        if self.isInterruptionRequested():
+            return
+        if callback_error or not code:
+            self.failed.emit("Google sign-in was canceled or expired. Please try again.")
+            return
+
+        self.verifying.emit()
+        try:
+            response = requests.post(
+                f"{COGNITO_OAUTH_URL}/token",
+                data={
+                    "grant_type": "authorization_code",
+                    "client_id": COGNITO_CLIENT_ID,
+                    "code": code,
+                    "redirect_uri": OAUTH_REDIRECT_URI,
+                    "code_verifier": self.code_verifier,
+                },
+                timeout=(4, 8),
+                allow_redirects=False,
+            )
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Unexpected Cognito token response")
+            tokens = response.json()
+            id_token = tokens.get("id_token") if isinstance(tokens, dict) else None
+            access_token = tokens.get("access_token") if isinstance(tokens, dict) else None
+            if not all(isinstance(token, str) and token for token in (id_token, access_token)):
+                raise ValueError("Missing Cognito tokens")
+        except (requests.exceptions.RequestException, ValueError):
+            if not self.isInterruptionRequested():
+                self.failed.emit("Could not exchange the sign-in code with Cognito. Please try again.")
+            return
+
+        if self.isInterruptionRequested():
+            return
+        try:
+            response = requests.get(
+                f"{COGNITO_OAUTH_URL}/userInfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=(4, 8),
+                allow_redirects=False,
+            )
+            response.raise_for_status()
+            if response.status_code != 200:
+                raise ValueError("Unexpected Cognito profile response")
+            profile = response.json()
+            sub = profile.get("sub") if isinstance(profile, dict) else None
+            if not isinstance(sub, str) or not sub:
+                raise ValueError("Missing Cognito subject")
+        except (requests.exceptions.RequestException, ValueError):
+            if not self.isInterruptionRequested():
+                self.failed.emit("Could not load your account from Cognito. Please try again.")
+            return
+
+        if not self.isInterruptionRequested():
+            self.authenticated.emit({
+                "sub": sub,
+                "email": profile.get("email"),
+                "name": profile.get("name") or profile.get("username"),
+                "id_token": id_token,
+            })
+
+
+class QueryRequestDenied(Exception):
+    pass
+
 
 class BackendWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
     step_update = pyqtSignal(str)
+    auth_expired = pyqtSignal()
 
-    def __init__(self, payload, backend_url="http://localhost:5000/chat", timeout_sec=180):
+    def __init__(self, payload, backend_url=CHAT_ENDPOINT, timeout_sec=180, headers=None):
         super().__init__()
         self.payload = payload
         self.backend_url = backend_url
         self.timeout_sec = timeout_sec
+        self.headers = headers
         self._is_cancelled = False
 
         self._user_input = payload.get("user_input", "")
@@ -499,8 +511,13 @@ class BackendWorker(QThread):
                 resp = session.post(
                     self.backend_url,
                     json=self.payload,
-                    timeout=self.timeout_sec
+                    headers=self.headers,
+                    timeout=self.timeout_sec,
+                    allow_redirects=False,
                 )
+                if resp.status_code == 401 and self.headers:
+                    self.auth_expired.emit()
+                    return
                 
                 if resp.status_code == 200:
                     try:
@@ -539,10 +556,8 @@ class BackendWorker(QThread):
                                        self._model_name, "llm_call", {"plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}"})
                 except: pass
 
-            except requests.exceptions.ConnectionError as e:
-                # CRITICAL: If connection fails, the WHOLE SERVER is likely down.
-                # DO NOT try to _send_error_report because that will also fail and cause recursive crash.
-                self.error.emit("Connection failed: QueryGIS server is offline. Please start the server first.")
+            except requests.exceptions.ConnectionError:
+                self.error.emit("Could not reach querygis.com. Check your connection and try again.")
 
             except requests.exceptions.RequestException as e:
                 self.error.emit(f"Network error: {str(e)}")
@@ -664,10 +679,9 @@ class QueryGIS(QObject):
         self.dockwidget = None
         self.chat_history = []
 
-        self.default_status_color = "#F0F0F0"
-        self.success_status_color = "#66FF66"
-        self.error_status_color = "#FF3333"
-        self.warning_status_color = "#FFA500" # Orange for retries
+        self.success_status_color = "#dcefe5"
+        self.error_status_color = "#a72f36"
+        self.warning_status_color = "#f6e5bd"
 
         self.ui = None
         self.worker = None
@@ -681,8 +695,8 @@ class QueryGIS(QObject):
         self._request_attempt = 0
         self._request_user_input = ""
         self._request_api_key = ""
+        self._request_id_token = None
         self._request_model = "gemini-3-flash-preview"
-        self._request_should_run = False
         self._request_tool_info = ""
         self._request_error_message = ""
         self._last_execution_error_message = ""
@@ -697,7 +711,13 @@ class QueryGIS(QObject):
         self._pending_attempt_start = False
 
         self.user_oauth_sub = None
+        self._id_token = None
+        self._login_confirmation_pending = False
+        self._connection_required_after_logout = False
         self.user_info = {}
+        self.auth_worker = None
+        self._usage_network = QtNetwork.QNetworkAccessManager(self)
+        self._usage_reply = None
 
         # UI Bridge for thread-safe/re-entrancy-safe updates
         self.ui_bridge = UiSafeBridge()
@@ -738,7 +758,6 @@ class QueryGIS(QObject):
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
         MAX_RETRIES = 2
-        FIX_URL = "http://localhost:5000/fix-code"
 
         log_capture = QgsMessageLogCapture()
         log_capture.start()
@@ -884,9 +903,8 @@ Message: {str(e)}
 
             thinking_strategy = "LOW" if retry_count == 0 else "HIGH"
             
-            api_key = self.load_api_key()
             payload = {
-                "api_key": api_key,
+                **self._request_credentials(),
                 "context": context_for_fix,
                 "user_input": user_input,
                 "broken_code": broken_code_for_fix,
@@ -896,7 +914,9 @@ Message: {str(e)}
             }
 
             try:
-                response = requests.post(FIX_URL, json=payload, timeout=150)
+                response = requests.post(FIX_ENDPOINT, json=payload, headers=self._request_auth_headers(),
+                                         timeout=150, allow_redirects=False)
+                self._check_fix_authorization(response)
                 
                 if response.status_code == 200:
                     data = response.json()
@@ -937,6 +957,8 @@ Message: {str(e)}
                 
                 raise Exception("Fix server request failed")
                 
+            except QueryRequestDenied:
+                raise
             except Exception as req_err:
                 current_attempt = self._request_attempt
                 if current_attempt == 1:
@@ -1030,6 +1052,7 @@ Message: {str(e)}
             self.ui.progressBar.setValue(0)
             if self.ui.status_label.text() != "Status: Ready":
                 self.ui.status_label.setText("Status: Ready")
+                self.ui.status_label.setStyleSheet("")
 
     def tr(self, message):
         return QCoreApplication.translate('QueryGIS', message)
@@ -1062,6 +1085,10 @@ Message: {str(e)}
         )
 
     def unload(self):
+        self._cancel_subscription_usage()
+        if self.auth_worker and self.auth_worker.isRunning():
+            self.auth_worker.requestInterruption()
+            self.auth_worker.wait(15000)
         if self.worker and self.worker.isRunning():
             self.worker.cancel()
             self.worker.quit()
@@ -1084,24 +1111,23 @@ Message: {str(e)}
             self.dockwidget.destroyed.connect(self._on_dockwidget_destroyed)
 
             self.ui = Ui_DockWidget()
-            self.ui.setupUi(self.dockwidget)
-
-            self.ui.line_apikey.setVisible(True)
-            self.ui.line_apikey.setPlaceholderText("Enter your API key")
-            self.ui.line_apikey.setEchoMode(QLineEdit.Password)
+            font_size = QSettings().value("QueryGIS/font_size", "M", type=str)
+            self.ui.setupUi(self.dockwidget, font_size)
 
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.btn_google_login.clicked.connect(self.handle_google_login)
-            self.ui.chk_ask_run.stateChanged.connect(self.toggle_ask_run)
+            self.ui.btn_connection_google.clicked.connect(self.handle_google_login)
+            self.ui.btn_usage_refresh.clicked.connect(self.refresh_subscription_usage)
+            self.ui.btn_start_querygis.clicked.connect(self._start_querygis)
+            self.ui.btn_save_key.clicked.connect(lambda: self._save_settings_key(self.ui.line_apikey))
+            self.ui.btn_use_enterprise_key.clicked.connect(lambda: self._save_settings_key(self.ui.line_enterprise_key))
+            self.ui.font_sizes.buttonClicked.connect(lambda button: self._save_font_size(button.text()))
             self.ui.text_query.installEventFilter(self)
-            self.ui.chk_ask_run.setChecked(True)
-            self.toggle_ask_run()
 
-            # Optional: Hide API key field if logged in? No, keep it for now.
-
-            saved_api_key = self.load_api_key()
-            if saved_api_key:
-                self.ui.line_apikey.setText(saved_api_key)
+            self.ui.set_api_key(self.load_api_key())
+            self._refresh_auth_ui()
+            if self._id_token:
+                self.refresh_subscription_usage()
 
             # Refresh and Connect Layer List signals
             self.refresh_layer_list()
@@ -1119,21 +1145,20 @@ Message: {str(e)}
         self.dockwidget.show()
 
     def _on_dockwidget_destroyed(self):
+        self._cancel_subscription_usage()
+        if self.auth_worker and self.auth_worker.isRunning():
+            self.auth_worker.requestInterruption()
         self.dockwidget = None
         self.ui = None
 
     def eventFilter(self, obj, event):
         if (self.ui and obj == self.ui.text_query and event.type() == QEvent.KeyPress):
-            if (event.key() == Qt.Key_Return and event.modifiers() == Qt.ControlModifier):
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter) and event.modifiers() in (
+                Qt.ControlModifier, Qt.ControlModifier | Qt.KeypadModifier
+            ):
                 self.process_query()
                 return True
         return super().eventFilter(obj, event)
-
-    def toggle_ask_run(self):
-        if self.ui and self.ui.chk_ask_run.isChecked():
-            self.ui.btn_ask.setText("Ask and Run\n(Ctrl+Enter)")
-        elif self.ui:
-            self.ui.btn_ask.setText("Ask\n(Ctrl+Enter)")
 
     def _collect_field_samples(self, vlayer, max_samples=3, scan_limit=50):
         fields_info = []
@@ -1164,70 +1189,6 @@ Message: {str(e)}
         
         return list(field_samples.values())
 
-    def add_chat_message(self, role, message):
-        msg_widget = QWidget()
-        layout = QHBoxLayout(msg_widget)
-        layout.setContentsMargins(10, 5, 10, 5)
-
-        if role == "user":
-            label = QLabel(message)
-            label.setWordWrap(True)
-            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            label.setStyleSheet(
-                "background-color: #1AC85C; color: white; border: none; border-radius: 10px; "
-                "padding: 8px; font-family: 'Segoe UI', sans-serif; font-size: 12px;"
-            )
-            layout.addStretch()
-            layout.addWidget(label)
-
-        elif role == "assistant-print":
-            label = QLabel(message)
-            label.setWordWrap(True)
-            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            label.setStyleSheet(
-                "background-color: #D9D9D9; color: black; border: none; border-radius: 10px; "
-                "padding: 8px; font-style: italic;"
-            )
-            copy_btn = QPushButton("Copy")
-            copy_btn.setMaximumSize(40, 25)
-            copy_btn.clicked.connect(lambda _, text=message: self.copy_to_clipboard(text))
-            layout.addWidget(label)
-            layout.addWidget(copy_btn)
-            layout.addStretch()
-
-        else:
-            text_edit = QTextEdit()
-            text_edit.setPlainText(message)
-            text_edit.setReadOnly(False)
-            text_edit.document().documentLayout().documentSizeChanged.connect(
-                lambda size, te=text_edit: te.setMinimumHeight(
-                    int(size.height()) + te.contentsMargins().top() +
-                    te.contentsMargins().bottom() + 5
-                )
-            )
-            text_edit.setMinimumHeight(
-                int(text_edit.document().size().height()) +
-                text_edit.contentsMargins().top() +
-                text_edit.contentsMargins().bottom() + 5
-            )
-            text_edit.setStyleSheet(
-                "QTextEdit {background-color: #D9D9D9; color: black; border: none; "
-                "border-radius: 10px; padding: 8px;}"
-            )
-            text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            text_edit.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            layout.addWidget(text_edit, 1)
-            run_btn = QPushButton("Run")
-            run_btn.setMaximumSize(40, 25)
-            layout.addWidget(run_btn)
-            copy_btn = QPushButton("Copy")
-            copy_btn.setMaximumSize(40, 25)
-            layout.addWidget(copy_btn)
-            layout.addStretch()
-            run_btn.clicked.connect(lambda _, edit=text_edit: self.run_message_from_chat(edit.toPlainText()))
-            copy_btn.clicked.connect(lambda _, edit=text_edit: self.copy_to_clipboard(edit.toPlainText()))
-        return msg_widget
-
     def append_chat_message(self, role, message):
         if not self.ui:
             return
@@ -1239,23 +1200,21 @@ Message: {str(e)}
             container.setUpdatesEnabled(False)
         try:
             self.chat_history.append({"role": role, "content": message})
-            msg_widget = self.add_chat_message(role, message)
+            self.ui.empty_chat.hide()
+            msg_widget = self.ui.create_message(role, message)
             self.ui.chatLayout.insertWidget(self.ui.chatLayout.count() - 1, msg_widget)
         finally:
             if container:
                 container.setUpdatesEnabled(True)
             sa.viewport().setUpdatesEnabled(True)
             sa.setUpdatesEnabled(True)
-        QTimer.singleShot(100, self.scroll_to_bottom)
+        self.ui.chatLayout.activate()
+        self.ui.scroll_to_latest(keep_question_visible=(role != "user"))
 
     def refresh_layer_list(self):
         if not self.ui or not hasattr(self.ui, 'layerListLayout'):
             return
             
-        # Update header label
-        if hasattr(self.ui, 'label_layers'):
-            self.ui.label_layers.setText("Selected Layers (Target):")
-
         # Clear existing widgets (keeping the spacer at the end)
         layout = self.ui.layerListLayout
         while layout.count() > 1:
@@ -1273,26 +1232,13 @@ Message: {str(e)}
             if active_layer:
                 layers = [active_layer]
         
-        if not layers:
-            empty_label = QLabel("Please select layers to operate on")
-            empty_label.setStyleSheet("""
-                QLabel {
-                    padding: 8px;
-                    color: #999;
-                    font-style: italic;
-                    font-family: 'Segoe UI', sans-serif;
-                    font-size: 11px;
-                }
-            """)
-            layout.insertWidget(layout.count() - 1, empty_label)
-            return
+        self.ui.empty_layers.setVisible(not layers)
 
-        active_layer = self.iface.activeLayer() # Used for highlighting the most active one
-        
         for lyr in layers:
             lyr_frame = QWidget()
+            lyr_frame.setObjectName("layerRow")
             lyr_layout = QHBoxLayout(lyr_frame)
-            lyr_layout.setContentsMargins(4, 2, 4, 2)
+            lyr_layout.setContentsMargins(8, 4, 8, 4)
             lyr_layout.setSpacing(8)
             
             # Type Icon Label
@@ -1319,34 +1265,11 @@ Message: {str(e)}
             
             # Layer Name Label (Static)
             name_label = QLabel(lyr.name())
-            name_label.setStyleSheet("""
-                QLabel {
-                    padding: 4px 2px;
-                    border: none;
-                    background-color: transparent;
-                    font-family: 'Segoe UI', sans-serif;
-                    font-size: 11px;
-                    color: #333;
-                }
-            """)
+            name_label.setTextFormat(Qt.PlainText)
+            name_label.setWordWrap(True)
             lyr_layout.addWidget(name_label, 1)
             
             layout.insertWidget(layout.count() - 1, lyr_frame)
-
-    def scroll_to_bottom(self):
-        if not self.ui:
-            return
-        sb = self.ui.chatScrollArea.verticalScrollBar()
-        if sb:
-            sb.setValue(sb.maximum())
-
-    def copy_to_clipboard(self, text):
-        QApplication.clipboard().setText(text)
-
-    def run_message_from_chat(self, code):
-        self.start_wave_progress("Preparing to execute code")
-        final_code = self._prepend_runtime_imports(code)
-        self.run_code_string(final_code)
 
     def _prepend_runtime_imports(self, raw_code: str) -> str:
         pre = [
@@ -1368,6 +1291,9 @@ Message: {str(e)}
         try:
             data = json.loads(response_text)
             if isinstance(data, dict):
+                if data.get("error") == "subscription_required":
+                    self.handle_error(data["output"]["text"])
+                    return
                 if "cache_used" in data:
                     try:
                         self._last_cache_used = bool(data.get("cache_used"))
@@ -1414,7 +1340,6 @@ Message: {str(e)}
             return
 
         display_text, code_blocks = self._parse_backend_response(response_text)
-        should_run = self._request_should_run if self._request_attempt else (bool(self.ui.chk_ask_run.isChecked()) if self.ui else False)
 
         chosen = None
         if code_blocks:
@@ -1450,16 +1375,19 @@ Message: {str(e)}
                     pass
 
                 self.append_chat_message("assistant", chosen)
-                if should_run:
-                    self.start_wave_progress("Executing code")
-                    final_code = self._prepend_runtime_imports(chosen)
+                self.start_wave_progress("Executing code")
+                final_code = self._prepend_runtime_imports(chosen)
+                try:
                     success = self.run_code_string(final_code)
-                    if (not success) and self._retry_on_execution_failure:
-                        if self._execution_advance_triggered:
-                            self._execution_advance_triggered = False
-                            return
-                        if self._advance_attempt(self._last_execution_error_message or "Execution failed"):
-                            return
+                except QueryRequestDenied as denied:
+                    self.handle_error(str(denied))
+                    return
+                if (not success) and self._retry_on_execution_failure:
+                    if self._execution_advance_triggered:
+                        self._execution_advance_triggered = False
+                        return
+                    if self._advance_attempt(self._last_execution_error_message or "Execution failed"):
+                        return
             else:
                 if (not display_text.strip()) and self._retry_on_empty_response:
                     if self._advance_attempt("Empty response from server"):
@@ -1513,13 +1441,12 @@ Message: {str(e)}
 
     def _build_backend_payload(self, mode, context_text="", tool_info="", error_message="", tool_request=None, tool_data=None):
         payload = {
-            "api_key": self._request_api_key,
+            **self._request_credentials(),
             "context": context_text or "",
             "user_input": self._request_user_input,
             "model": self._request_model,
             "mode": mode,
             "version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
-            "oauth_sub": self.user_oauth_sub
         }
         if tool_info:
             payload["tool_info"] = tool_info
@@ -1546,10 +1473,11 @@ Message: {str(e)}
             self.worker.quit()
             self.worker.wait(3000)
 
-        self.worker = BackendWorker(payload, backend_url="http://localhost:5000/chat", timeout_sec=120)
+        self.worker = BackendWorker(payload, timeout_sec=120, headers=self._request_auth_headers())
         self.worker.step_update.connect(self.update_wave_message)
         self.worker.finished.connect(self.handle_response)
         self.worker.error.connect(self.handle_error)
+        self.worker.auth_expired.connect(self._handle_expired_login)
         self.worker.start()
 
     def _advance_attempt(self, reason):
@@ -1605,11 +1533,8 @@ Message: {str(e)}
     
     def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
         """Syntax Error 전용 Fix 서버 호출"""
-        FIX_URL = "http://localhost:5000/fix-code"
-        
-        api_key = self.load_api_key()
         payload = {
-            "api_key": api_key,
+            **self._request_credentials(),
             "context": context,
             "user_input": user_input,
             "broken_code": broken_code[:2000],  # 길이 제한
@@ -1620,7 +1545,9 @@ Message: {str(e)}
         
         try:
             self.update_wave_message("Fixing syntax error...")
-            response = requests.post(FIX_URL, json=payload, timeout=60)
+            response = requests.post(FIX_ENDPOINT, json=payload, headers=self._request_auth_headers(),
+                                     timeout=60, allow_redirects=False)
+            self._check_fix_authorization(response)
             
             if response.status_code == 200:
                 data = response.json()
@@ -1655,6 +1582,8 @@ Message: {str(e)}
             
             return None
         
+        except QueryRequestDenied:
+            raise
         except Exception as e:
             print(f"[SYNTAX FIX ERROR] {e}")
             return None
@@ -1751,6 +1680,8 @@ Message: {str(e)}
                             if fixed_code:
                                 print(f"[SYNTAX FIX] Retrying with fixed code")
                                 return self.run_code_string(fixed_code)
+                        except QueryRequestDenied:
+                            raise
                         except Exception as fix_err:
                             print(f"[SYNTAX FIX FAILED] {fix_err}")
                 
@@ -1816,6 +1747,8 @@ Message: {str(e)}
             self._add_execution_result_to_chat(True, elapsed)
             return True
         
+        except QueryRequestDenied:
+            raise
         except Exception as e:
             elapsed = time.time() - start_time
             tb_text = traceback.format_exc()
@@ -2037,7 +1970,9 @@ Message: {str(e)}
                 candidate = None
                 if "output" in data:
                     out = data["output"]
-                    if isinstance(out, dict) and "text" in out:
+                    if isinstance(out, str):
+                        candidate = out
+                    elif isinstance(out, dict) and "text" in out:
                         candidate = out["text"]
                 if candidate is None and "response" in data:
                     candidate = data["response"]
@@ -2054,12 +1989,76 @@ Message: {str(e)}
                     display_text = str(candidate)
                 else:
                     display_text = json.dumps(data, ensure_ascii=False, indent=2)
+            elif isinstance(data, str):
+                display_text = data
             else:
                 display_text = json.dumps(data, ensure_ascii=False, indent=2)
         except Exception:
             display_text = response_text
         code_blocks = self._extract_code_blocks(display_text)
+        if len(code_blocks) <= 1:
+            code = code_blocks[0] if code_blocks else display_text.strip()
+            printed_text = self._extract_literal_print_text(code)
+            if printed_text is not None:
+                prose = self._extract_non_code_text(display_text) if code != display_text.strip() else ""
+                return "\n\n".join(part for part in (prose, printed_text) if part), []
         return display_text, code_blocks
+
+    @classmethod
+    def _extract_literal_print_text(cls, code: str):
+        if "print" not in code:
+            return None
+        try:
+            statements = ast.parse(code).body
+        except (SyntaxError, ValueError):
+            return None
+        bindings = {}
+        lines = []
+        for statement in statements:
+            if isinstance(statement, ast.Assign):
+                if len(statement.targets) != 1 or not isinstance(statement.targets[0], ast.Name):
+                    return None
+                name = statement.targets[0].id
+                value = cls._literal_output_value(statement.value, bindings)
+                if name == "print" or value is None:
+                    return None
+                bindings[name] = value
+                continue
+
+            if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+                return None
+            call = statement.value
+            if not isinstance(call.func, ast.Name) or call.func.id != "print" or call.keywords:
+                return None
+            args = [cls._literal_output_value(arg, bindings) for arg in call.args]
+            if not all(isinstance(arg, str) for arg in args):
+                return None
+            lines.append(" ".join(args))
+        return "\n".join(lines) if lines else None
+
+    @classmethod
+    def _literal_output_value(cls, node, bindings):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.Name):
+            return bindings.get(node.id)
+        if isinstance(node, (ast.List, ast.Tuple)) and all(
+            isinstance(item, ast.Constant) and isinstance(item.value, str) for item in node.elts
+        ):
+            return tuple(item.value for item in node.elts)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "join"
+            and isinstance(node.func.value, ast.Constant)
+            and isinstance(node.func.value.value, str)
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            items = cls._literal_output_value(node.args[0], bindings)
+            if isinstance(items, tuple):
+                return node.func.value.value.join(items)
+        return None
 
     def save_api_key(self, api_key):
         settings = QSettings()
@@ -2496,113 +2495,221 @@ Message: {str(e)}
         else:
             self.append_chat_message("assistant-print", f"Failed after {time_str}")
 
+    def _refresh_auth_ui(self):
+        if not self.ui:
+            return
+        signed_in = bool(self.user_oauth_sub)
+        account = self.user_info.get("email") or self.user_info.get("name") or ""
+        self.ui.btn_google_login.setText(self.tr("Sign out") if signed_in else self.tr("Sign in with Google"))
+        self.ui.btn_google_login.setIcon(QtGui.QIcon() if signed_in else self.ui.google_icon)
+        self.ui.label_welcome_user.setText(account)
+        self.ui.label_welcome_user.setVisible(signed_in and bool(account))
+        self.ui.subscription_panel.setVisible(signed_in)
+        self.ui.key_controls.setVisible(not signed_in)
+        self.ui.set_auth_required(
+            not signed_in and (self._connection_required_after_logout or not self.load_api_key().strip()),
+            show_login_success=self._login_confirmation_pending,
+        )
+
+    def _save_settings_key(self, field):
+        api_key = field.text().strip()
+        self.save_api_key(api_key)
+        self.ui.set_api_key(api_key)
+        if api_key:
+            self._connection_required_after_logout = False
+        self._refresh_auth_ui()
+        self.ui.set_auth_message(self.tr("API key saved.") if api_key else self.tr("API key cleared."))
+
+    def _save_font_size(self, size):
+        self.ui.set_font_size(size)
+        QSettings().setValue("QueryGIS/font_size", size)
+
+    def _request_credentials(self):
+        return {"api_key": self._request_api_key}
+
+    def _request_auth_headers(self):
+        if self._request_id_token:
+            return {"Authorization": f"Bearer {self._request_id_token}"}
+        return {}
+
+    def _handle_expired_login(self):
+        if self._id_token == self._request_id_token:
+            self.handle_logout()
+        self.handle_error(self.tr("Your Google session expired. Please sign in again."))
+
+    def _check_fix_authorization(self, response):
+        if response.status_code == 401 and self._request_id_token:
+            if self._id_token == self._request_id_token:
+                self.handle_logout()
+            raise QueryRequestDenied(self.tr("Your Google session expired. Please sign in again."))
+        if response.status_code == 200:
+            data = response.json()
+            if isinstance(data, dict) and data.get("error") == "subscription_required":
+                raise QueryRequestDenied(data["output"]["text"])
+
+    def _set_google_sign_in_message(self, message):
+        if not self.ui:
+            return
+        self.ui.status_label.setStyleSheet("")
+        self.ui.status_label.setText(message)
+        self.ui.set_auth_message(message)
+
+    def _set_google_buttons_enabled(self, enabled):
+        if self.ui:
+            self.ui.btn_google_login.setEnabled(enabled)
+            self.ui.btn_connection_google.setEnabled(enabled)
+            self.ui.btn_enterprise_access.setEnabled(enabled)
+
     def handle_google_login(self):
-        # If already logged in, this button acts as a Logout button
         if self.user_oauth_sub:
             self.handle_logout()
             return
+        if self.auth_worker and self.auth_worker.isRunning():
+            return
 
-        port = 5055
-        cognito_domain = "ap-northeast-2jv0sbpw92.auth.ap-northeast-2.amazoncognito.com"
-        # Using the Client ID from the React example provided by user
-        client_id = "5ng2ng7bfttoea1ij4egjeru4b" 
-        redirect_uri = f"http://localhost:{port}"
-        
-        auth_url = (
-            f"https://{cognito_domain}/login?"
-            f"client_id={client_id}&"
-            f"response_type=code&"
-            f"scope=email%20openid%20profile&"
-            f"redirect_uri={redirect_uri}&"
-            f"identity_provider=Google"
-        )
-        
-        import webbrowser
-        webbrowser.open(auth_url)
-        
-        if self.ui:
-            self.ui.status_label.setText("Waiting for Google login...")
-        
-        # Start local loopback server
-        if hasattr(self, 'auth_worker') and self.auth_worker.isRunning():
-            self.auth_worker.stop()
-            self.auth_worker.wait()
-            
-        self.auth_worker = OAuthCallbackWorker(port)
-        self.auth_worker.code_received.connect(self.handle_auth_code)
-        self.auth_worker.start()
+        state = secrets.token_urlsafe(32)
+        verifier = secrets.token_urlsafe(64)
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode("ascii")
+        params = urllib.parse.urlencode({
+            "client_id": COGNITO_CLIENT_ID,
+            "response_type": "code",
+            "scope": "email openid profile",
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "identity_provider": "Google",
+            "state": state,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+        })
+        auth_url = f"{COGNITO_OAUTH_URL}/authorize?{params}"
+        worker = OAuthCallbackWorker(urllib.parse.urlsplit(OAUTH_REDIRECT_URI).port, state, verifier)
+        self.auth_worker = worker
+        worker.ready.connect(lambda: self._open_google_sign_in(worker, auth_url))
+        worker.verifying.connect(lambda: self._set_google_sign_in_message(self.tr("Verifying Google sign-in…")))
+        worker.authenticated.connect(self._complete_google_sign_in)
+        worker.failed.connect(self._set_google_sign_in_message)
+        worker.finished.connect(lambda: self._set_google_buttons_enabled(True))
+        self._set_google_buttons_enabled(False)
+        self._set_google_sign_in_message(self.tr("Continue in your browser…"))
+        worker.start()
+
+    def _open_google_sign_in(self, worker, url):
+        if not worker.isInterruptionRequested() and not QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)):
+            worker.requestInterruption()
+            self._set_google_sign_in_message(self.tr("Could not open your browser. Please try again."))
+
+    def _complete_google_sign_in(self, profile):
+        self.set_user_auth(profile["sub"], profile.get("email"), profile.get("name"), profile["id_token"])
 
     def handle_logout(self):
+        self._cancel_subscription_usage()
         self.user_oauth_sub = None
+        self._id_token = None
+        self._login_confirmation_pending = False
+        self._connection_required_after_logout = True
         self.user_info = {}
+        self._refresh_auth_ui()
         if self.ui:
-            self.ui.btn_google_login.setText("Google Login")
-            self.ui.status_label.setText("Logged out.")
-            self.ui.label_welcome_user.setText("") # Clear welcome message
-            # Reset status background
-            self.ui.status_label.setStyleSheet(f"background-color: {self.default_status_color}; padding: 5px;")
-            # Show API Key input again
-            self.ui.label_api.show()
-            self.ui.line_apikey.show()
-        print("DEBUG: User logged out locally")
+            self.ui.set_auth_message("")
+            self.ui.status_label.setStyleSheet("")
+            self.ui.status_label.setText(self.tr("Signed out"))
 
-    def handle_auth_code(self, code):
-        if self.ui:
-            self.ui.status_label.setText("Verifying with Google...")
-        try:
-            # Our backend will now handle both Google exchange and Cognito backfilling
-            resp = requests.post("http://localhost:5000/auth/exchange", 
-                               json={"code": code, "redirect_uri": "http://localhost:5055"},
-                               timeout=15)
-            if resp.status_code == 200:
-                data = resp.json()
-                self.set_user_auth(data.get("sub"), data.get("email"), data.get("name"))
-            else:
-                if self.ui:
-                    self.ui.status_label.setText(f"Exchange failed: {resp.text}")
-        except Exception as e:
-            if self.ui:
-                self.ui.status_label.setText(f"Auth error: {e}")
-        
-    def set_user_auth(self, sub, email, name):
+    def set_user_auth(self, sub, email, name, id_token):
+        self._cancel_subscription_usage()
         self.user_oauth_sub = sub
+        self._id_token = id_token
+        self._login_confirmation_pending = True
+        self._connection_required_after_logout = False
         self.user_info = {"email": email, "name": name}
+        self._refresh_auth_ui()
         if self.ui:
-            # Update labels
-            self.ui.btn_google_login.setText("Logout")
-            self.ui.label_welcome_user.setText(f"Welcome, {email}")
-            
-            # Update status bar with Sub ID and Green background
-            self.ui.status_label.setText(f"Welcome, your ID is {sub}")
-            self.ui.status_label.setStyleSheet("background-color: #d4edda; color: #155724; padding: 5px; border-radius: 4px;")
-            
-            # Hide API Key input (server-side key will be used)
-            self.ui.label_api.hide()
-            self.ui.line_apikey.hide()
+            self.ui.set_auth_message("")
+            self.ui.status_label.setText(self.tr("Signed in"))
+            self.ui.status_label.setStyleSheet("background-color: #dcefe5; color: #155724;")
+            self.refresh_subscription_usage()
+
+    def _start_querygis(self):
+        self._login_confirmation_pending = False
+        self._refresh_auth_ui()
+
+    def refresh_subscription_usage(self):
+        if not self.ui or not self._id_token or self._usage_reply is not None:
+            return
+
+        self.ui.btn_usage_refresh.setEnabled(False)
+        self.ui.label_plan.setText(self.tr("Loading subscription…"))
+        self.ui.label_calls.clear()
+        request = QtNetwork.QNetworkRequest(QtCore.QUrl(SUBSCRIPTION_USAGE_ENDPOINT))
+        request.setRawHeader(b"Authorization", f"Bearer {self._id_token}".encode("ascii"))
+        request.setAttribute(QtNetwork.QNetworkRequest.RedirectPolicyAttribute,
+                             QtNetwork.QNetworkRequest.ManualRedirectPolicy)
+        reply = self._usage_network.get(request)
+        self._usage_reply = reply
+        timeout = QTimer(reply)
+        timeout.setSingleShot(True)
+        timeout.timeout.connect(reply.abort)
+        reply.finished.connect(lambda: self._finish_subscription_usage(reply))
+        timeout.start(15000)
+
+    def _cancel_subscription_usage(self):
+        reply, self._usage_reply = self._usage_reply, None
+        if reply is not None:
+            reply.abort()
+
+    def _finish_subscription_usage(self, reply):
+        reply.deleteLater()
+        if reply is not self._usage_reply:
+            return
+        self._usage_reply = None
+        if not self.ui:
+            return
+
+        self.ui.btn_usage_refresh.setEnabled(True)
+        status = reply.attribute(QtNetwork.QNetworkRequest.HttpStatusCodeAttribute)
+        message = self.tr("Could not load subscription. Try refreshing.")
+        if status == 401:
+            message = self.tr("Your Google session expired. Sign out and sign in again.")
+        elif status == 200 and reply.error() == QtNetwork.QNetworkReply.NoError:
+            try:
+                usage = json.loads(bytes(reply.readAll()))
+                if usage["status"] == "active":
+                    plan, calls, limit, remaining = (usage[key] for key in ("plan_name", "calls", "limit", "remaining"))
+                    message = self.tr("Your plan: {plan}").format(plan=plan)
+                    self.ui.label_calls.setText(
+                        self.tr("Calls: {calls:,} / {limit:,} used · {remaining:,} remaining").format(
+                            calls=calls, limit=limit, remaining=remaining
+                        )
+                    )
+                elif usage["status"] == "not_registered":
+                    message = self.tr("Sign up on the AICM website to see your plan.")
+                elif usage["status"] == "no_subscription":
+                    message = self.tr("No active subscription.")
+            except (KeyError, TypeError, ValueError):
+                message = self.tr("Could not read subscription information. Try refreshing.")
+        self.ui.label_plan.setText(message)
+
 
     def process_query(self):
         if not self.ui:
             self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.Critical)
             return
 
-        self.start_wave_progress("Processing query")
+        if not self.ui.btn_ask.isEnabled():
+            return
+
         user_input = self.ui.text_query.toPlainText().strip()
         if not user_input:
             self.ui.status_label.setText("Query is empty!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            self.hide_progress()
             return
 
-        api_key = self.ui.line_apikey.text().strip()
-        if not api_key:
-            self.ui.status_label.setText("API Key is required!")
-            self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            self.hide_progress()
+        id_token = self._id_token
+        api_key = "" if id_token else self.load_api_key().strip()
+        if not (api_key or id_token):
+            self._refresh_auth_ui()
             return
 
-        saved_key = self.load_api_key()
-        if api_key != saved_key:
-            self.save_api_key(api_key)
+        self.ui.status_label.setStyleSheet("")
+        self.start_wave_progress("Processing query")
 
         self._current_run_id = uuid.uuid4().hex[:12]
 
@@ -2617,8 +2724,8 @@ Message: {str(e)}
             self._request_attempt = 1
             self._request_user_input = user_input
             self._request_api_key = api_key
+            self._request_id_token = id_token
             self._request_model = model_name
-            self._request_should_run = bool(self.ui.chk_ask_run.isChecked())
             self._request_tool_info = self._collect_tool_info()
             self._request_error_message = ""
             self._last_execution_error_message = ""

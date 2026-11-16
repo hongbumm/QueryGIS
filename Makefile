@@ -38,19 +38,19 @@ LOCALES =
 # translation
 SOURCES = \
 	__init__.py \
-	query_gis.py query_gis_dialog.py
+	query_gis.py query_gis_dialog.py dockwidget.py
 
 PLUGINNAME = query_gis
 
 PY_FILES = \
 	__init__.py \
-	query_gis.py query_gis_dialog.py
+	query_gis.py query_gis_dialog.py dockwidget.py
 
 UI_FILES = query_gis_dialog_base.ui
 
 EXTRAS = metadata.txt icon.png
 
-EXTRA_DIRS =
+EXTRA_DIRS = ui_assets
 
 COMPILED_RESOURCE_FILES = resources.py
 
@@ -128,7 +128,7 @@ deploy: compile doc transcompile
 	cp -vfr i18n $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)
 	cp -vfr $(HELP) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/help
 	# Copy extra directories if any
-	(foreach EXTRA_DIR,(EXTRA_DIRS), cp -R (EXTRA_DIR) (HOME)/(QGISDIR)/python/plugins/(PLUGINNAME)/;)
+	cp -R $(EXTRA_DIRS) $(HOME)/$(QGISDIR)/python/plugins/$(PLUGINNAME)/
 
 
 # The dclean target removes compiled python files from plugin directory
