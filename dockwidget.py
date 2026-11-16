@@ -1,16 +1,323 @@
-from math import ceil
+import csv
+from html import escape
+from math import ceil, floor, isfinite, log10
 from pathlib import Path
 from random import sample
+from tempfile import NamedTemporaryFile
 
 from qgis.PyQt import QtCore, QtGui, QtWidgets
 
 from . import resources
+from .result_tools import open_chart_preview, preview_report, save_chart, save_report
+
+QsciLexerPython = QsciScintilla = None
+if QtCore.QT_VERSION_STR.startswith("5."):
+    try:
+        from PyQt5.Qsci import QsciLexerPython, QsciScintilla
+    except ImportError:
+        pass
 
 
 _ = QtCore.QCoreApplication.translate
 UI_ASSETS = Path(__file__).resolve().parent / "ui_assets"
 FONT_SIZES = {"S": 10, "M": 12, "L": 14}
 DEFAULT_LAYER_HEIGHT = 270
+CHART_PREVIEW_ROWS = 8
+
+
+class ResultCardData:
+    def __init__(self, title, columns, rows, *, chart=None, view=None, chart_type="bar"):
+        self.title = str(title)
+        self.query = ""
+        self.analysis_target = None
+        self.columns = tuple(str(column) for column in columns)
+        self.rows = tuple(tuple(self._cell(value) for value in row) for row in rows)
+        if not self.columns or any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("Result rows must match the result columns.")
+        if view not in (None, "table", "chart", "both") or (chart is None and view in ("chart", "both")):
+            raise ValueError("A chart view requires category and value column indexes.")
+        if chart_type not in ("bar", "line", "scatter", "histogram"):
+            raise ValueError("Chart type must be 'bar', 'line', 'scatter', or 'histogram'.")
+
+        self.show_table = view != "chart"
+        self.chart_type = chart_type
+        self.chart_columns = ()
+        self.chart_rows = []
+        if chart is not None and view != "table":
+            category, value = chart
+            if category == value or any(type(index) is not int or not 0 <= index < len(self.columns)
+                                        for index in (category, value)):
+                raise ValueError("Chart indexes must identify two different result columns.")
+            self.chart_columns = (self.columns[category], self.columns[value])
+            for row in self.rows:
+                number = self._number(row[value])
+                if chart_type == "scatter" and self._number(row[category]) is None:
+                    continue
+                if chart_type == "histogram" and number is not None and number < 0:
+                    raise ValueError("Histogram values must be nonnegative.")
+                if number is not None or chart_type in ("line", "histogram"):
+                    self.chart_rows.append((row[category], row[value] if number is not None else None, number))
+
+    @staticmethod
+    def _number(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return number if isfinite(number) else None
+
+    @staticmethod
+    def _cell(value):
+        if isinstance(value, QtCore.QVariant):
+            value = None if value.isNull() else value.value()
+        if isinstance(value, (QtCore.QDate, QtCore.QDateTime, QtCore.QTime)):
+            return value.toString(QtCore.Qt.ISODate)
+        if value is None or isinstance(value, (str, int, float)):
+            return value
+        return str(value)
+
+    def write_csv(self, path, *, chart=False):
+        columns = self.chart_columns if chart else self.columns
+        rows = ((label, value) for label, value, _ in self.chart_rows) if chart else self.rows
+        path = Path(path)
+        temporary_path = None
+        try:
+            with NamedTemporaryFile(mode="w", encoding="utf-8-sig", newline="",
+                                    dir=path.parent, delete=False) as stream:
+                temporary_path = Path(stream.name)
+                writer = csv.writer(stream)
+                writer.writerow(columns)
+                writer.writerows(rows)
+            temporary_path.replace(path)
+            temporary_path = None
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
+
+
+class _ResultTableModel(QtCore.QAbstractTableModel):
+    def __init__(self, result, parent):
+        super().__init__(parent)
+        self.result = result
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self.result.rows)
+
+    def columnCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self.result.columns)
+
+    def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
+        if (orientation == QtCore.Qt.Horizontal and 0 <= section < len(self.result.columns)
+                and role in (QtCore.Qt.DisplayRole, QtCore.Qt.ToolTipRole)):
+            return self.result.columns[section]
+        return None
+
+    def data(self, index, role=QtCore.Qt.DisplayRole):
+        if not index.isValid():
+            return None
+        value = self.result.rows[index.row()][index.column()]
+        if role in (QtCore.Qt.DisplayRole, QtCore.Qt.ToolTipRole):
+            return "" if value is None else str(value)
+        if role == QtCore.Qt.UserRole:
+            return value
+        if role == QtCore.Qt.TextAlignmentRole and isinstance(value, (int, float)):
+            return int(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        return None
+
+
+class _ResultTableFilter(QtCore.QSortFilterProxyModel):
+    def lessThan(self, left, right):
+        return self._sort_key(left.data(QtCore.Qt.UserRole)) < self._sort_key(right.data(QtCore.Qt.UserRole))
+
+    @staticmethod
+    def _sort_key(value):
+        if value is None:
+            return (2, "")
+        if isinstance(value, int) or isinstance(value, float) and isfinite(value):
+            return (0, value)
+        return (1, str(value).casefold())
+
+
+class _ResultBar(QtWidgets.QWidget):
+    def __init__(self, number, lower, upper):
+        super().__init__()
+        scale = max(abs(lower), abs(upper)) or 1
+        span = upper / scale - lower / scale
+        self.zero = (-lower / scale) / span if span else 0
+        self.end = self.zero + (number / scale) / span if span else 0
+        self.setFixedHeight(8)
+
+    def set_colors(self, track, fill):
+        self.track = QtGui.QColor(track)
+        self.fill = QtGui.QColor(fill)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(self.track)
+        painter.drawRoundedRect(QtCore.QRectF(self.rect()), 4, 4)
+        painter.setBrush(self.fill)
+        start = min(self.zero, self.end) * self.width()
+        width = abs(self.end - self.zero) * self.width()
+        if width:
+            painter.drawRoundedRect(QtCore.QRectF(start, 0, width, self.height()), 4, 4)
+        if 0 < self.zero < 1:
+            painter.setPen(self.fill)
+            x = round(self.zero * self.width())
+            painter.drawLine(x, 0, x, self.height())
+
+
+class _ResultPlot(QtWidgets.QWidget):
+    def __init__(self, result):
+        super().__init__()
+        self.rows = result.chart_rows
+        self.chart_type = result.chart_type
+        values = [number for _, _, number in self.rows if number is not None]
+        self.y_axis = self._axis(values, include_zero=self.chart_type != "scatter")
+        self.x_axis = self._axis([float(label) for label, _, _ in self.rows]) if self.chart_type == "scatter" else None
+        self._plot_rect = QtCore.QRectF()
+        self._scatter_points = []
+        self.setMinimumHeight(210)
+        self.setMouseTracking(True)
+        self.setAccessibleName(result.title)
+        self.setAccessibleDescription(_("DockWidget", "Chart positions: {count}").format(count=len(self.rows)))
+
+    @staticmethod
+    def _axis(values, include_zero=False):
+        lower, upper = min(values), max(values)
+        if include_zero:
+            lower, upper = min(0, lower), max(0, upper)
+        scale = max(abs(lower), abs(upper)) or 1
+        lower, upper = lower / scale, upper / scale
+        if lower == upper:
+            lower, upper = (0, 1) if include_zero else (lower - 0.1, upper + 0.1)
+        return scale, lower, upper
+
+    @staticmethod
+    def _axis_labels(axis):
+        scale, lower, upper = axis
+        step = (upper - lower) / 4
+        increment = step * scale
+        values = [(lower + step * index) * scale for index in range(5)]
+        if 1e-5 <= increment and scale < 1e9:
+            digits = max(0, 2 - floor(log10(increment)))
+            labels = [f"{value:,.{digits}f}" for value in values]
+            return [label.rstrip("0").rstrip(".") for label in labels] if digits else labels
+        precision = min(16, max(4, 2 - floor(log10(step))))
+        return [format(value, f".{precision}g") for value in values]
+
+    def set_colors(self, grid, text, fill, points):
+        self.grid = QtGui.QColor(grid)
+        self.text = QtGui.QColor(text)
+        self.fill = QtGui.QColor(fill)
+        font = self.font()
+        font.setPointSize(max(9, points - 2))
+        self.setFont(font)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        metrics = painter.fontMetrics()
+        labels = self._axis_labels(self.y_axis)
+        label_width = max(metrics.horizontalAdvance(label) for label in labels)
+        left = label_width + 9
+        top = metrics.height() / 2
+        bottom = self.height() - metrics.height() - 11
+        width = max(1, self.width() - left - 8)
+        height = max(1, bottom - top)
+        self._plot_rect = QtCore.QRectF(left, top, width, height)
+
+        for step, label in enumerate(labels):
+            y = bottom - step * height / 4
+            painter.setPen(self.grid)
+            painter.drawLine(QtCore.QLineF(left, y, left + width, y))
+            painter.setPen(self.text)
+            painter.drawText(QtCore.QRectF(0, y - top, label_width, metrics.height()),
+                             QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, label)
+
+        if self.x_axis:
+            for step, label in enumerate(self._axis_labels(self.x_axis)):
+                x = left + step * width / 4
+                cell_width = min(92, width / 4)
+                cell_left = max(left, min(x - cell_width / 2, left + width - cell_width))
+                alignment = (QtCore.Qt.AlignLeft if step == 0 else
+                             QtCore.Qt.AlignRight if step == 4 else QtCore.Qt.AlignHCenter)
+                painter.setPen(self.grid)
+                painter.drawLine(QtCore.QLineF(x, bottom, x, bottom + 4))
+                painter.setPen(self.text)
+                label = metrics.elidedText(label, QtCore.Qt.ElideRight, int(cell_width))
+                painter.drawText(QtCore.QRectF(cell_left, bottom + 6, cell_width, metrics.height()),
+                                 alignment | QtCore.Qt.AlignVCenter, label)
+
+        y_scale, y_min, y_max = self.y_axis
+        slot = width / len(self.rows)
+        label_step = max(1, ceil(86 / slot))
+        path = QtGui.QPainterPath()
+        markers = []
+        bars = []
+        connected = False
+        for index, (label, _, number) in enumerate(self.rows):
+            x = left + (index + 0.5) * slot
+            if not self.x_axis and index % label_step == 0:
+                cell_width = min(slot * label_step, 2 * min(x, self.width() - x))
+                text = metrics.elidedText("" if label is None else str(label), QtCore.Qt.ElideRight,
+                                          max(0, int(cell_width) - 6))
+                painter.setPen(self.text)
+                painter.drawText(QtCore.QRectF(x - cell_width / 2, bottom + 6, cell_width, metrics.height()),
+                                 QtCore.Qt.AlignCenter, text)
+            if number is None:
+                connected = False
+                continue
+            fraction = (number / y_scale - y_min) / (y_max - y_min)
+            point = QtCore.QPointF(x, bottom - fraction * height)
+            if self.x_axis:
+                x_scale, x_min, x_max = self.x_axis
+                point.setX(left + (float(label) / x_scale - x_min) / (x_max - x_min) * width)
+                markers.append(point)
+                continue
+            if self.chart_type == "histogram":
+                gap = min(1, slot / 5)
+                bars.append(QtCore.QRectF(x - slot / 2 + gap / 2, point.y(), slot - gap, bottom - point.y()))
+                continue
+            if connected:
+                path.lineTo(point)
+            else:
+                path.moveTo(point)
+            if len(self.rows) <= 40 or not connected:
+                markers.append(point)
+            connected = True
+
+        painter.setPen(QtGui.QPen(self.fill, 2))
+        painter.drawPath(path)
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(self.fill)
+        for bar in bars:
+            painter.drawRect(bar)
+        for point in markers:
+            painter.drawEllipse(point, 3, 3)
+        if self.x_axis:
+            self._scatter_points = markers
+
+    def mouseMoveEvent(self, event):
+        if not self._plot_rect.contains(QtCore.QPointF(event.pos())):
+            QtWidgets.QToolTip.hideText()
+            return
+        if self.x_axis:
+            position = QtCore.QPointF(event.pos())
+            index, point = min(enumerate(self._scatter_points), key=lambda item: (item[1] - position).manhattanLength())
+            if (point - position).manhattanLength() > 14:
+                QtWidgets.QToolTip.hideText()
+                return
+        else:
+            fraction = (event.pos().x() - self._plot_rect.left()) / self._plot_rect.width()
+            index = min(len(self.rows) - 1, int(fraction * len(self.rows)))
+        label, value, _number = self.rows[index]
+        value_text = str(value) if value is not None else _("DockWidget", "No value")
+        label_text = "" if label is None else str(label)
+        QtWidgets.QToolTip.showText(event.globalPos(), f"<qt>{escape(label_text)} · {escape(value_text)}</qt>", self)
 
 STARTER_PROMPTS = (
     ("Create an RGB composite",
@@ -202,7 +509,8 @@ class Ui_DockWidget:
 
     _pretendard_family = None
 
-    def setupUi(self, dock, font_size="M"):
+    def setupUi(self, dock, font_size="M", rerun_result=None):
+        self._rerun_result = rerun_result
         dock.setObjectName("DockWidget")
         dock.setWindowTitle(_("DockWidget", "QueryGIS"))
         dock.resize(460, 680)
@@ -539,15 +847,38 @@ class Ui_DockWidget:
         self.font_sizes.button(self._font_points).setChecked(True)
         self._apply_style(self._pretendard_family, self._font_points)
         self.text_query.schedule_fit()
-        for editor in self.workspace.findChildren(QtWidgets.QPlainTextEdit, "codePreview"):
+        for editor in self.workspace.findChildren(QtWidgets.QWidget, "codePreview"):
             self._size_code_preview(editor)
+        for table in self.workspace.findChildren(QtWidgets.QTableView, "resultTable"):
+            self._size_result_table(table)
 
     def _size_code_preview(self, editor):
         font = editor.font()
         font.setPointSize(self._font_points)
         editor.setFont(font)
-        line_height = editor.fontMetrics().lineSpacing()
-        editor.setFixedHeight(min(16, max(3, editor.blockCount())) * line_height + 32)
+        if QsciScintilla is not None and isinstance(editor, QsciScintilla):
+            background, text, muted, keyword, string, number = self._code_colors
+            lexer = editor.lexer()
+            lexer.setDefaultFont(font)
+            lexer.setFont(font)
+            lexer.setDefaultPaper(QtGui.QColor(background))
+            lexer.setPaper(QtGui.QColor(background))
+            lexer.setColor(QtGui.QColor(text))
+            lexer.setColor(QtGui.QColor(keyword), QsciLexerPython.Keyword)
+            lexer.setColor(QtGui.QColor(muted), QsciLexerPython.Comment)
+            lexer.setColor(QtGui.QColor(number), QsciLexerPython.Number)
+            for style in (QsciLexerPython.SingleQuotedString, QsciLexerPython.DoubleQuotedString,
+                          QsciLexerPython.TripleSingleQuotedString, QsciLexerPython.TripleDoubleQuotedString):
+                lexer.setColor(QtGui.QColor(string), style)
+            editor.setMarginsFont(font)
+            editor.setMarginsBackgroundColor(QtGui.QColor(background))
+            editor.setMarginsForegroundColor(QtGui.QColor(muted))
+            count = editor.lines()
+            editor.setMarginWidth(0, "0" * max(2, len(str(count))) + " ")
+        else:
+            count = editor.blockCount()
+        line_height = QtGui.QFontMetrics(font).lineSpacing()
+        editor.setFixedHeight(min(16, max(3, count)) * line_height + 32)
 
     def _google_button(self):
         button = QtWidgets.QPushButton(_("DockWidget", "Sign in with Google"))
@@ -860,6 +1191,9 @@ class Ui_DockWidget:
             row.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
             layout.addWidget(self._code_review(message))
             return row
+        if role == "assistant-result":
+            layout.addWidget(self._result_card(message))
+            return row
         if role != "user":
             layout.addWidget(_ReplyText(message, self.chatScrollArea.viewport()))
             return row
@@ -875,6 +1209,271 @@ class Ui_DockWidget:
         layout.addWidget(label)
         self._latest_question = row
         return row
+
+    def _result_card(self, result):
+        card = QtWidgets.QFrame()
+        card.setObjectName("resultCard")
+        layout = QtWidgets.QVBoxLayout(card)
+        layout.setContentsMargins(12, 9, 12, 10)
+        layout.setSpacing(8)
+
+        heading = QtWidgets.QHBoxLayout()
+        title = QtWidgets.QLabel(result.title)
+        title.setObjectName("sectionLabel")
+        title.setTextFormat(QtCore.Qt.PlainText)
+        title.setWordWrap(True)
+        heading.addWidget(title, 1)
+        save = QtWidgets.QPushButton(_("DockWidget", "Save CSV"))
+        heading.addWidget(save, 0, QtCore.Qt.AlignTop)
+        more = QtWidgets.QToolButton()
+        more.setObjectName("resultMenuButton")
+        more.setText(_("DockWidget", "More"))
+        more.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        more.setMenu(self._result_menu(more, card, result))
+        heading.addWidget(more, 0, QtCore.Qt.AlignTop)
+        layout.addLayout(heading)
+
+        views = []
+        if result.show_table:
+            views.append((_("DockWidget", "Table"), self._result_table(result), False))
+        if result.chart_columns:
+            chart_label = {
+                "bar": _("DockWidget", "Chart"),
+                "line": _("DockWidget", "Line chart"),
+                "scatter": _("DockWidget", "Scatter plot"),
+                "histogram": _("DockWidget", "Histogram"),
+            }[result.chart_type]
+            views.append((chart_label, self._result_chart(result), True))
+
+        tabs = None
+        if len(views) > 1:
+            tabs = QtWidgets.QTabBar()
+            tabs.setObjectName("resultTabs")
+            tabs.setExpanding(False)
+            tabs.setDrawBase(False)
+            layout.addWidget(tabs)
+
+        for label, widget, _is_chart in views:
+            if tabs is not None:
+                tabs.addTab(label)
+            layout.addWidget(widget)
+
+        def select_view(index):
+            for position, (_, widget, _) in enumerate(views):
+                widget.setVisible(position == index)
+
+        if tabs is not None:
+            tabs.currentChanged.connect(select_view)
+        select_view(0)
+        save.clicked.connect(lambda: self._save_result_csv(
+            card, result, views[tabs.currentIndex() if tabs is not None else 0][2]
+        ))
+        return card
+
+    def _result_menu(self, button, parent, result):
+        menu = QtWidgets.QMenu(button)
+        if result.chart_columns:
+            menu.addAction(_("DockWidget", "Open chart…"), lambda: open_chart_preview(
+                parent, result.title, self._chart_preview(result)
+            ))
+            menu.addAction(_("DockWidget", "Save PNG…"), lambda: self._save_chart_image(parent, result, "png"))
+            menu.addAction(_("DockWidget", "Save SVG…"), lambda: self._save_chart_image(parent, result, "svg"))
+            menu.addSeparator()
+        menu.addAction(_("DockWidget", "Save PDF report…"), lambda: self._save_result_file(
+            parent, "QueryGIS-report.pdf", _("DockWidget", "Save report as PDF"),
+            _("DockWidget", "PDF files (*.pdf)"), lambda path: self._with_report_chart(
+                result, lambda chart: save_report(path, result, chart)
+            )
+        ))
+        menu.addAction(_("DockWidget", "Print preview…"), lambda: self._with_report_chart(
+            result, lambda chart: preview_report(parent, result, chart)
+        ))
+        if self._rerun_result and result.query:
+            menu.addSeparator()
+            menu.addAction(_("DockWidget", "Run with layer or field…"), lambda: self._rerun_result(result))
+        return menu
+
+    def _chart_preview(self, result, include_title=True):
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("resultCard")
+        frame.setStyleSheet(self.dockWidgetContents.styleSheet())
+        frame.setFont(self.dockWidgetContents.font())
+        layout = QtWidgets.QVBoxLayout(frame)
+        layout.setContentsMargins(12, 10, 12, 10)
+        if include_title:
+            title = QtWidgets.QLabel(result.title)
+            title.setObjectName("sectionLabel")
+            title.setTextFormat(QtCore.Qt.PlainText)
+            title.setWordWrap(True)
+            layout.addWidget(title)
+        layout.addWidget(self._result_chart(result))
+        frame.ensurePolished()
+        width = 680
+        height = max(layout.sizeHint().height(), layout.heightForWidth(width))
+        frame.setFixedSize(width, height)
+        layout.activate()
+        return frame
+
+    def _with_report_chart(self, result, action):
+        try:
+            action(self._chart_preview(result, include_title=False) if result.chart_columns else None)
+        except (ImportError, OSError) as error:
+            QtWidgets.QMessageBox.warning(self.dockWidgetContents, _("DockWidget", "Could not create report"), str(error))
+
+    def _save_chart_image(self, parent, result, extension):
+        file_filter = (_("DockWidget", "PNG images (*.png)") if extension == "png"
+                       else _("DockWidget", "SVG images (*.svg)"))
+        self._save_result_file(
+            parent, f"QueryGIS-chart.{extension}", _("DockWidget", "Save chart"),
+            file_filter, lambda path: save_chart(path, self._chart_preview(result))
+        )
+
+    def _result_table(self, result):
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        search = QtWidgets.QLineEdit()
+        search.setObjectName("resultTableFilter")
+        search.setPlaceholderText(_("DockWidget", "Search table…"))
+        search.setAccessibleName(_("DockWidget", "Search table"))
+        search.setClearButtonEnabled(True)
+        layout.addWidget(search)
+        table = QtWidgets.QTableView()
+        table.setObjectName("resultTable")
+        table.setAccessibleName(result.title)
+        filtered = _ResultTableFilter(table)
+        filtered.setSourceModel(_ResultTableModel(result, filtered))
+        filtered.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        filtered.setFilterKeyColumn(-1)
+        table.setModel(filtered)
+        table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        table.setShowGrid(False)
+        table.setWordWrap(False)
+        table.verticalHeader().hide()
+        header = table.horizontalHeader()
+        header.setDefaultSectionSize(120)
+        header.setStretchLastSection(True)
+        header.setTextElideMode(QtCore.Qt.ElideRight)
+        if len(result.columns) <= 2:
+            header.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+        table.setSortingEnabled(True)
+        table.sortByColumn(-1, QtCore.Qt.AscendingOrder)
+        layout.addWidget(table)
+        count = len(result.rows)
+        info = QtWidgets.QLabel()
+        info.setObjectName("mutedLabel")
+        layout.addWidget(info)
+
+        def apply_filter(text):
+            filtered.setFilterFixedString(text)
+            matches = filtered.rowCount()
+            info.setText(
+                _("DockWidget", "Rows: {matches:,} of {count:,}").format(matches=matches, count=count)
+                if text else _("DockWidget", "Rows: {count:,}").format(count=count)
+            )
+            self._size_result_table(table)
+
+        search.textChanged.connect(apply_filter)
+        apply_filter("")
+        return widget
+
+    def _size_result_table(self, table):
+        font = table.font()
+        font.setPointSize(self._font_points)
+        table.setFont(font)
+        row_height = QtGui.QFontMetrics(font).lineSpacing() + 10
+        table.verticalHeader().setDefaultSectionSize(row_height)
+        table.horizontalHeader().setFixedHeight(row_height)
+        visible_rows = min(6, table.model().rowCount())
+        table.setFixedHeight(row_height * (1 + visible_rows))
+
+    def _result_chart(self, result):
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        measure = QtWidgets.QLabel(result.chart_columns[1])
+        measure.setObjectName("mutedLabel")
+        measure.setTextFormat(QtCore.Qt.PlainText)
+        measure.setWordWrap(True)
+        layout.addWidget(measure)
+
+        if result.chart_type != "bar":
+            if any(number is not None for _, _, number in result.chart_rows):
+                chart = _ResultPlot(result)
+                chart.set_colors(*self._result_plot_style)
+                layout.addWidget(chart)
+                if result.chart_type == "scatter":
+                    axis = QtWidgets.QLabel(result.chart_columns[0])
+                    axis.setObjectName("mutedLabel")
+                    axis.setTextFormat(QtCore.Qt.PlainText)
+                    axis.setWordWrap(True)
+                    layout.addWidget(axis, 0, QtCore.Qt.AlignHCenter)
+            else:
+                layout.addWidget(QtWidgets.QLabel(_("DockWidget", "No numeric values to plot.")))
+            return widget
+
+        preview = result.chart_rows[:CHART_PREVIEW_ROWS]
+        if not preview:
+            layout.addWidget(QtWidgets.QLabel(_("DockWidget", "No numeric values to plot.")))
+            return widget
+
+        lower = min(0, min(number for _, _, number in preview))
+        upper = max(0, max(number for _, _, number in preview))
+        for name, value, number in preview:
+            row = QtWidgets.QHBoxLayout()
+            label = QtWidgets.QLabel("" if name is None else str(name))
+            label.setTextFormat(QtCore.Qt.PlainText)
+            label.setWordWrap(True)
+            value_label = QtWidgets.QLabel(str(value))
+            value_label.setTextFormat(QtCore.Qt.PlainText)
+            row.addWidget(label, 1)
+            row.addWidget(value_label)
+            layout.addLayout(row)
+            bar = _ResultBar(number, lower, upper)
+            bar.set_colors(*self._result_bar_colors)
+            layout.addWidget(bar)
+
+        count = len(result.chart_rows)
+        if count > len(preview):
+            caption = _("DockWidget", "Showing {shown} of {count:,} values").format(shown=len(preview), count=count)
+            note = QtWidgets.QLabel(caption)
+            note.setObjectName("mutedLabel")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+        return widget
+
+    def _save_result_csv(self, parent, result, chart):
+        filename = "QueryGIS-chart.csv" if chart else "QueryGIS-table.csv"
+        self._save_result_file(
+            parent, filename, _("DockWidget", "Save results as CSV"), _("DockWidget", "CSV files (*.csv)"),
+            lambda path: result.write_csv(path, chart=chart)
+        )
+
+    def _save_result_file(self, parent, filename, title, file_filter, action):
+        path, _filter = QtWidgets.QFileDialog.getSaveFileName(
+            parent, title, filename, file_filter
+        )
+        if not path:
+            return
+        path = Path(path)
+        suffix = Path(filename).suffix
+        if path.suffix.lower() != suffix:
+            path = path.with_name(path.name + suffix)
+            if path.exists() and QtWidgets.QMessageBox.question(
+                parent, _("DockWidget", "Replace file?"),
+                _("DockWidget", "Replace the existing file {name}?").format(name=path.name),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
+            ) != QtWidgets.QMessageBox.Yes:
+                return
+        try:
+            action(path)
+        except (ImportError, OSError, csv.Error, UnicodeError) as error:
+            QtWidgets.QMessageBox.warning(
+                parent, _("DockWidget", "Could not save file"), str(error)
+            )
 
     def _code_review(self, code):
         card = QtWidgets.QFrame()
@@ -907,16 +1506,25 @@ class Ui_DockWidget:
         toolbar.addWidget(copy, 0, QtCore.Qt.AlignVCenter)
         layout.addLayout(toolbar)
 
-        editor = QtWidgets.QPlainTextEdit()
+        if QsciScintilla is not None:
+            editor = QsciScintilla()
+            editor.setReadOnly(True)
+            editor.setUtf8(True)
+            editor.setMarginType(0, QsciScintilla.NumberMargin)
+            editor.setMarginLineNumbers(0, True)
+            editor.setLexer(QsciLexerPython(editor))
+            editor.setText(code)
+        else:
+            editor = QtWidgets.QPlainTextEdit()
+            editor.setReadOnly(True)
+            editor.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+            editor.setPlainText(code)
         editor.setObjectName("codePreview")
         editor.setAccessibleName(_("DockWidget", "Generated Python code"))
-        editor.setReadOnly(True)
-        editor.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
         code_font = QtGui.QFont()
         code_font.setFamilies(["Consolas", "Menlo", "DejaVu Sans Mono", "monospace"])
         code_font.setStyleHint(QtGui.QFont.Monospace)
         editor.setFont(code_font)
-        editor.setPlainText(code)
         self._size_code_preview(editor)
         editor.hide()
         layout.addWidget(editor)
@@ -937,11 +1545,22 @@ class Ui_DockWidget:
             text, muted, border = "#edf4f0", "#adbfb6", "#3a4a43"
             accent, accent_hover, user = "#126848", "#0e7651", "#22483a"
             veil = "rgba(19, 26, 23, 160)"
+            chart_fill = "#70c5a2"
         else:
             background, surface, inset = "#f3f7f4", "#ffffff", "#eaf1ec"
             text, muted, border = "#1b2b24", "#52675c", "#d6e2db"
             accent, accent_hover, user = "#116245", "#0b5038", "#dcefe5"
             veil = "rgba(237, 245, 240, 160)"
+            chart_fill = accent
+
+        self._result_bar_colors = (inset, chart_fill)
+        for bar in self.dockWidgetContents.findChildren(_ResultBar):
+            bar.set_colors(*self._result_bar_colors)
+        self._result_plot_style = (border, muted, chart_fill, points)
+        for plot in self.dockWidgetContents.findChildren(_ResultPlot):
+            plot.set_colors(*self._result_plot_style)
+        self._code_colors = (background, text, muted, chart_fill,
+                             "#ecc389" if dark else "#8a4300", "#c3a6ee" if dark else "#69428d")
 
         font_rule = f'font-family: "{font_family}";' if font_family else ""
         self.label_layers.setStyleSheet(
@@ -1009,8 +1628,26 @@ class Ui_DockWidget:
             QPlainTextEdit#questionInput {{ border: none; background: {surface}; }}
             QPlainTextEdit#codePreview {{ background: {background}; font-size: {points}pt; }}
             QLineEdit:focus, QPlainTextEdit:focus {{ border-color: {accent}; }}
-            QTextEdit#resultMessage, QFrame#codeReview {{
+            QTextEdit#resultMessage, QFrame#codeReview, QFrame#resultCard {{
                 background: {surface}; color: {text}; border: 1px solid {border}; border-radius: 11px;
+            }}
+            QTableView#resultTable {{
+                {font_rule} font-size: {points}pt;
+                background: {surface}; color: {text};
+                border: none; selection-background-color: {user}; selection-color: {text};
+            }}
+            QTableView#resultTable::item {{ border-bottom: 1px solid {border}; padding: 0 7px; }}
+            QTableView#resultTable QHeaderView::section {{
+                {font_rule} font-size: {points}pt; font-weight: bold;
+                background: {inset}; color: {text}; padding: 3px 7px; border: none;
+            }}
+            QTabBar#resultTabs::tab {{
+                {font_rule} font-size: {points}pt;
+                background: {surface}; color: {muted}; border: 1px solid {border};
+                border-radius: 6px; padding: 3px 10px; margin-right: 4px;
+            }}
+            QTabBar#resultTabs::tab:selected, QTabBar#resultTabs::tab:focus {{
+                background: {user}; color: {text}; border-color: {accent};
             }}
             QLabel#userMessage, QTextEdit#resultMessage {{ padding: 8px 10px; }}
             QLabel#userMessage {{ background: {user}; border-radius: 11px; }}
@@ -1027,6 +1664,7 @@ class Ui_DockWidget:
             QToolButton#closeSettingsButton {{ border-radius: 15px; padding: 0; }}
             QToolButton#closeSettingsButton:hover {{ background: {user}; }}
             QToolButton#usageRefreshButton {{ padding: 5px; }}
+            QToolButton#resultMenuButton {{ border-color: {border}; }}
             QToolButton#reviewCodeButton {{ padding: 5px 8px; }}
             QToolButton#copyCodeButton {{ padding: 0; }}
             QPushButton:hover, QToolButton:hover, QToolButton:checked {{ background: {user}; }}

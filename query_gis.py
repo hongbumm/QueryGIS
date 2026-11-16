@@ -46,13 +46,15 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .resources import *
-from .dockwidget import Ui_DockWidget
+from .dockwidget import ResultCardData, Ui_DockWidget
+from .result_tools import select_analysis_target
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.9.8"
+CURRENT_VERSION = "1.9.11"
+RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
 BACKEND_BASE_URL = "https://querygis.com"
 CHAT_ENDPOINT = f"{BACKEND_BASE_URL}/chat"
 FIX_ENDPOINT = f"{BACKEND_BASE_URL}/fix-code"
@@ -694,6 +696,8 @@ class QueryGIS(QObject):
         self._last_soft_error_info = None
         self._request_attempt = 0
         self._request_user_input = ""
+        self._request_original_query = ""
+        self._request_analysis_target = None
         self._request_api_key = ""
         self._request_id_token = None
         self._request_model = "gemini-3-flash-preview"
@@ -774,6 +778,9 @@ class QueryGIS(QObject):
             pass 
 
         try:
+            result_cards = scope.get("_querygis_result_cards")
+            if result_cards is not None:
+                result_cards.clear()
             if retry_count > 0 and isinstance(sys.stdout, io.StringIO):
                 sys.stdout.truncate(0)
                 sys.stdout.seek(0)
@@ -905,6 +912,7 @@ Message: {str(e)}
             
             payload = {
                 **self._request_credentials(),
+                **RESULT_CAPABILITIES,
                 "context": context_for_fix,
                 "user_input": user_input,
                 "broken_code": broken_code_for_fix,
@@ -1112,7 +1120,7 @@ Message: {str(e)}
 
             self.ui = Ui_DockWidget()
             font_size = QSettings().value("QueryGIS/font_size", "M", type=str)
-            self.ui.setupUi(self.dockwidget, font_size)
+            self.ui.setupUi(self.dockwidget, font_size, rerun_result=self._rerun_result)
 
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.btn_google_login.clicked.connect(self.handle_google_login)
@@ -1199,7 +1207,7 @@ Message: {str(e)}
         if container:
             container.setUpdatesEnabled(False)
         try:
-            self.chat_history.append({"role": role, "content": message})
+            self.chat_history.append({"role": role, "content": message.title if role == "assistant-result" else message})
             self.ui.empty_chat.hide()
             msg_widget = self.ui.create_message(role, message)
             self.ui.chatLayout.insertWidget(self.ui.chatLayout.count() - 1, msg_widget)
@@ -1442,6 +1450,7 @@ Message: {str(e)}
     def _build_backend_payload(self, mode, context_text="", tool_info="", error_message="", tool_request=None, tool_data=None):
         payload = {
             **self._request_credentials(),
+            **RESULT_CAPABILITIES,
             "context": context_text or "",
             "user_input": self._request_user_input,
             "model": self._request_model,
@@ -1535,6 +1544,7 @@ Message: {str(e)}
         """Syntax Error 전용 Fix 서버 호출"""
         payload = {
             **self._request_credentials(),
+            **RESULT_CAPABILITIES,
             "context": context,
             "user_input": user_input,
             "broken_code": broken_code[:2000],  # 길이 제한
@@ -1711,7 +1721,7 @@ Message: {str(e)}
             current_context = self._last_context_text or "{}"
             
             self.execute_with_self_correction(
-                code_string, scope, last_user_input, current_context
+                code_string, scope, self._request_user_input or last_user_input, current_context
             )
             
             final_output = main_buffer.getvalue().strip()
@@ -1740,6 +1750,10 @@ Message: {str(e)}
                 query_gis_instance=self
             )
             
+            for result in scope["_querygis_result_cards"]:
+                result.query = self._request_original_query or last_user_input
+                result.analysis_target = self._request_analysis_target
+                self.append_chat_message("assistant-result", result)
             if final_output:
                 self.append_chat_message("assistant-print", f"Output:\n{final_output}")
             
@@ -1803,6 +1817,11 @@ Message: {str(e)}
             main_buffer.close()
 
     def get_execution_scope(self):
+        result_cards = []
+
+        def show_result(title, columns, rows, *, chart=None, view=None, chart_type="bar"):
+            result_cards.append(ResultCardData(title, columns, rows, chart=chart, view=view, chart_type=chart_type))
+
         scope = {
             'iface': self.iface,
             'qgis': sys.modules['qgis'],
@@ -1841,6 +1860,7 @@ Message: {str(e)}
             'get_layer_safe': self.get_layer_safe,
             'shorten_layer_name': self.shorten_layer_name
         }
+        scope.update(show_result=show_result, _querygis_result_cards=result_cards)
         
         # Prepare safely-wrapped processing environment
         scope['processing_feedback'] = _UIFeedback(self.ui_bridge, label="Processing...")
@@ -1957,6 +1977,14 @@ Message: {str(e)}
                 text.lstrip().startswith(("try:", "import ", "from "))
             )
         )
+        if not looks_like_code and "show_result" in text:
+            try:
+                looks_like_code = any(
+                    isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "show_result" for node in ast.walk(ast.parse(text))
+                )
+            except SyntaxError:
+                pass
         if looks_like_code:
             code_blocks.append(text.strip())
         return code_blocks
@@ -2152,12 +2180,18 @@ Message: {str(e)}
             rows.append(row)
         return rows
 
+    def _analysis_layer(self):
+        if self._request_analysis_target is not None:
+            layer_id, _field = self._request_analysis_target
+            return QgsProject.instance().mapLayer(layer_id)
+        return self.iface.activeLayer() if self.iface else None
+
     def _collect_qgis_context(self):
         p = QgsProject.instance()
         layers_info = []
         active_id = None
         try:
-            active = self.iface.activeLayer() if self.iface else None
+            active = self._analysis_layer()
             if active:
                 active_id = active.id()
         except Exception:
@@ -2302,6 +2336,9 @@ Message: {str(e)}
             except Exception:
                 pass
 
+        if self._request_analysis_target is not None:
+            selected_layers = [self._analysis_layer()]
+
         for lyr in selected_layers:
             if not lyr:
                 continue
@@ -2368,7 +2405,7 @@ Message: {str(e)}
             pass
 
         try:
-            active = self.iface.activeLayer() if self.iface else None
+            active = self._analysis_layer()
             if active:
                 active_info = {
                     "name": active.name(),
@@ -2427,7 +2464,7 @@ Message: {str(e)}
                     pass
             elif name == "active_layer_fields":
                 try:
-                    active = self.iface.activeLayer() if self.iface else None
+                    active = self._analysis_layer()
                     if active and isinstance(active, QgsVectorLayer):
                         data[name] = {
                             "name": active.name(),
@@ -2688,7 +2725,27 @@ Message: {str(e)}
         self.ui.label_plan.setText(message)
 
 
+    def _rerun_result(self, result):
+        if not self.ui or not self.ui.btn_ask.isEnabled():
+            return
+        layer = self.iface.activeLayer() if self.iface else None
+        field = ""
+        if result.analysis_target:
+            layer_id, field = result.analysis_target
+            layer = QgsProject.instance().mapLayer(layer_id) or layer
+        selection = select_analysis_target(self.dockwidget, layer, field)
+        if selection is None:
+            return
+        selected_layer, _field = selection
+        if selected_layer is None or not selected_layer.isValid():
+            self.ui.status_label.setText(self.tr("The selected layer is no longer available."))
+            return
+        self._submit_query(result.query, selection)
+
     def process_query(self):
+        self._submit_query()
+
+    def _submit_query(self, original_query=None, target=None):
         if not self.ui:
             self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.Critical)
             return
@@ -2696,7 +2753,7 @@ Message: {str(e)}
         if not self.ui.btn_ask.isEnabled():
             return
 
-        user_input = self.ui.text_query.toPlainText().strip()
+        user_input = original_query if original_query is not None else self.ui.text_query.toPlainText().strip()
         if not user_input:
             self.ui.status_label.setText("Query is empty!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
@@ -2713,8 +2770,24 @@ Message: {str(e)}
 
         self._current_run_id = uuid.uuid4().hex[:12]
 
-        self.append_chat_message("user", user_input)
-        self.ui.text_query.clear()
+        display_query = user_input
+        self._request_original_query = user_input
+        self._request_analysis_target = None
+        if target is not None:
+            layer, field = target
+            self._request_analysis_target = (layer.id(), field)
+            display_query += "\n\n" + self.tr("Layer: {layer}").format(layer=layer.name())
+            user_input += (
+                "\n\nQueryGIS analysis target selected by the user. It overrides the source "
+                "layer and any explicitly selected field from the original request. "
+                f"Use QgsProject.instance().mapLayer({layer.id()!r}) as the source layer ({layer.name()!r})."
+            )
+            if field:
+                display_query += "\n" + self.tr("Field: {field}").format(field=field)
+                user_input += f" Use the exact field {field!r} as the selected analysis field."
+        self.append_chat_message("user", display_query)
+        if original_query is None:
+            self.ui.text_query.clear()
         self.ui.btn_ask.setEnabled(False)
 
         # REDACTED: Usage check (v1.6 handles this server-side to prevent UI freeze)

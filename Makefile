@@ -38,13 +38,13 @@ LOCALES =
 # translation
 SOURCES = \
 	__init__.py \
-	query_gis.py query_gis_dialog.py dockwidget.py
+	query_gis.py query_gis_dialog.py dockwidget.py result_tools.py
 
 PLUGINNAME = query_gis
 
 PY_FILES = \
 	__init__.py \
-	query_gis.py query_gis_dialog.py dockwidget.py
+	query_gis.py query_gis_dialog.py dockwidget.py result_tools.py
 
 UI_FILES = query_gis_dialog_base.ui
 
