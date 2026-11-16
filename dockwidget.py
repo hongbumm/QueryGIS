@@ -28,8 +28,6 @@ CHART_PREVIEW_ROWS = 8
 class ResultCardData:
     def __init__(self, title, columns, rows, *, chart=None, view=None, chart_type="bar"):
         self.title = str(title)
-        self.query = ""
-        self.analysis_target = None
         self.columns = tuple(str(column) for column in columns)
         self.rows = tuple(tuple(self._cell(value) for value in row) for row in rows)
         if not self.columns or any(len(row) != len(self.columns) for row in self.rows):
@@ -145,28 +143,18 @@ class _ResultBar(QtWidgets.QWidget):
         span = upper / scale - lower / scale
         self.zero = (-lower / scale) / span if span else 0
         self.end = self.zero + (number / scale) / span if span else 0
-        self.setFixedHeight(8)
-
-    def set_colors(self, track, fill):
-        self.track = QtGui.QColor(track)
-        self.fill = QtGui.QColor(fill)
-        self.update()
+        self.setFixedHeight(12)
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(self.track)
-        painter.drawRoundedRect(QtCore.QRectF(self.rect()), 4, 4)
-        painter.setBrush(self.fill)
+        palette = self.palette()
         start = min(self.zero, self.end) * self.width()
         width = abs(self.end - self.zero) * self.width()
         if width:
-            painter.drawRoundedRect(QtCore.QRectF(start, 0, width, self.height()), 4, 4)
-        if 0 < self.zero < 1:
-            painter.setPen(self.fill)
-            x = round(self.zero * self.width())
-            painter.drawLine(x, 0, x, self.height())
+            painter.fillRect(QtCore.QRectF(start, 0, width, self.height()), palette.highlight())
+        painter.setPen(palette.color(QtGui.QPalette.Text))
+        x = min(self.width() - 1, round(self.zero * self.width()))
+        painter.drawLine(x, 0, x, self.height())
 
 
 class _ResultPlot(QtWidgets.QWidget):
@@ -208,36 +196,44 @@ class _ResultPlot(QtWidgets.QWidget):
         precision = min(16, max(4, 2 - floor(log10(step))))
         return [format(value, f".{precision}g") for value in values]
 
-    def set_colors(self, grid, text, fill, points):
-        self.grid = QtGui.QColor(grid)
-        self.text = QtGui.QColor(text)
-        self.fill = QtGui.QColor(fill)
-        font = self.font()
-        font.setPointSize(max(9, points - 2))
+    def set_font_size(self, points):
+        font = QtWidgets.QApplication.font()
+        font.setPointSize(points)
         self.setFont(font)
         self.update()
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        palette = self.palette()
+        text = palette.color(QtGui.QPalette.Text)
+        grid = QtGui.QColor(text)
+        grid.setAlpha(44)
+        fill = palette.color(QtGui.QPalette.Highlight)
         metrics = painter.fontMetrics()
         labels = self._axis_labels(self.y_axis)
         label_width = max(metrics.horizontalAdvance(label) for label in labels)
         left = label_width + 9
         top = metrics.height() / 2
-        bottom = self.height() - metrics.height() - 11
+        label_height = metrics.height() if self.x_axis else 2 * metrics.lineSpacing()
+        bottom = self.height() - label_height - 11
         width = max(1, self.width() - left - 8)
         height = max(1, bottom - top)
         self._plot_rect = QtCore.QRectF(left, top, width, height)
+        painter.fillRect(self._plot_rect, palette.base())
 
         for step, label in enumerate(labels):
             y = bottom - step * height / 4
-            painter.setPen(self.grid)
+            painter.setPen(grid)
             painter.drawLine(QtCore.QLineF(left, y, left + width, y))
-            painter.setPen(self.text)
+            painter.setPen(text)
+            painter.drawLine(QtCore.QLineF(left - 4, y, left, y))
             painter.drawText(QtCore.QRectF(0, y - top, label_width, metrics.height()),
                              QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, label)
 
+        painter.setPen(text)
+        painter.drawLine(self._plot_rect.topLeft(), self._plot_rect.bottomLeft())
+        painter.drawLine(self._plot_rect.bottomLeft(), self._plot_rect.bottomRight())
         if self.x_axis:
             for step, label in enumerate(self._axis_labels(self.x_axis)):
                 x = left + step * width / 4
@@ -245,9 +241,7 @@ class _ResultPlot(QtWidgets.QWidget):
                 cell_left = max(left, min(x - cell_width / 2, left + width - cell_width))
                 alignment = (QtCore.Qt.AlignLeft if step == 0 else
                              QtCore.Qt.AlignRight if step == 4 else QtCore.Qt.AlignHCenter)
-                painter.setPen(self.grid)
                 painter.drawLine(QtCore.QLineF(x, bottom, x, bottom + 4))
-                painter.setPen(self.text)
                 label = metrics.elidedText(label, QtCore.Qt.ElideRight, int(cell_width))
                 painter.drawText(QtCore.QRectF(cell_left, bottom + 6, cell_width, metrics.height()),
                                  alignment | QtCore.Qt.AlignVCenter, label)
@@ -263,11 +257,10 @@ class _ResultPlot(QtWidgets.QWidget):
             x = left + (index + 0.5) * slot
             if not self.x_axis and index % label_step == 0:
                 cell_width = min(slot * label_step, 2 * min(x, self.width() - x))
-                text = metrics.elidedText("" if label is None else str(label), QtCore.Qt.ElideRight,
-                                          max(0, int(cell_width) - 6))
-                painter.setPen(self.text)
-                painter.drawText(QtCore.QRectF(x - cell_width / 2, bottom + 6, cell_width, metrics.height()),
-                                 QtCore.Qt.AlignCenter, text)
+                painter.drawLine(QtCore.QLineF(x, bottom, x, bottom + 4))
+                painter.drawText(QtCore.QRectF(x - cell_width / 2 + 2, bottom + 6, max(1, cell_width - 4), label_height),
+                                 QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop | QtCore.Qt.TextWordWrap,
+                                 "" if label is None else str(label))
             if number is None:
                 connected = False
                 continue
@@ -290,10 +283,10 @@ class _ResultPlot(QtWidgets.QWidget):
                 markers.append(point)
             connected = True
 
-        painter.setPen(QtGui.QPen(self.fill, 2))
+        painter.setPen(QtGui.QPen(fill, 2))
         painter.drawPath(path)
         painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(self.fill)
+        painter.setBrush(fill)
         for bar in bars:
             painter.drawRect(bar)
         for point in markers:
@@ -509,8 +502,7 @@ class Ui_DockWidget:
 
     _pretendard_family = None
 
-    def setupUi(self, dock, font_size="M", rerun_result=None):
-        self._rerun_result = rerun_result
+    def setupUi(self, dock, font_size="M"):
         dock.setObjectName("DockWidget")
         dock.setWindowTitle(_("DockWidget", "QueryGIS"))
         dock.resize(460, 680)
@@ -1288,9 +1280,6 @@ class Ui_DockWidget:
         menu.addAction(_("DockWidget", "Print preview…"), lambda: self._with_report_chart(
             result, lambda chart: preview_report(parent, result, chart)
         ))
-        if self._rerun_result and result.query:
-            menu.addSeparator()
-            menu.addAction(_("DockWidget", "Run with layer or field…"), lambda: self._rerun_result(result))
         return menu
 
     def _chart_preview(self, result, include_title=True):
@@ -1298,6 +1287,7 @@ class Ui_DockWidget:
         frame.setObjectName("resultCard")
         frame.setStyleSheet(self.dockWidgetContents.styleSheet())
         frame.setFont(self.dockWidgetContents.font())
+        frame.setPalette(self.dockWidgetContents.palette())
         layout = QtWidgets.QVBoxLayout(frame)
         layout.setContentsMargins(12, 10, 12, 10)
         if include_title:
@@ -1403,7 +1393,7 @@ class Ui_DockWidget:
         if result.chart_type != "bar":
             if any(number is not None for _, _, number in result.chart_rows):
                 chart = _ResultPlot(result)
-                chart.set_colors(*self._result_plot_style)
+                chart.set_font_size(self._font_points)
                 layout.addWidget(chart)
                 if result.chart_type == "scatter":
                     axis = QtWidgets.QLabel(result.chart_columns[0])
@@ -1433,7 +1423,6 @@ class Ui_DockWidget:
             row.addWidget(value_label)
             layout.addLayout(row)
             bar = _ResultBar(number, lower, upper)
-            bar.set_colors(*self._result_bar_colors)
             layout.addWidget(bar)
 
         count = len(result.chart_rows)
@@ -1545,21 +1534,17 @@ class Ui_DockWidget:
             text, muted, border = "#edf4f0", "#adbfb6", "#3a4a43"
             accent, accent_hover, user = "#126848", "#0e7651", "#22483a"
             veil = "rgba(19, 26, 23, 160)"
-            chart_fill = "#70c5a2"
+            code_keyword = "#70c5a2"
         else:
             background, surface, inset = "#f3f7f4", "#ffffff", "#eaf1ec"
             text, muted, border = "#1b2b24", "#52675c", "#d6e2db"
             accent, accent_hover, user = "#116245", "#0b5038", "#dcefe5"
             veil = "rgba(237, 245, 240, 160)"
-            chart_fill = accent
+            code_keyword = accent
 
-        self._result_bar_colors = (inset, chart_fill)
-        for bar in self.dockWidgetContents.findChildren(_ResultBar):
-            bar.set_colors(*self._result_bar_colors)
-        self._result_plot_style = (border, muted, chart_fill, points)
         for plot in self.dockWidgetContents.findChildren(_ResultPlot):
-            plot.set_colors(*self._result_plot_style)
-        self._code_colors = (background, text, muted, chart_fill,
+            plot.set_font_size(points)
+        self._code_colors = (background, text, muted, code_keyword,
                              "#ecc389" if dark else "#8a4300", "#c3a6ee" if dark else "#69428d")
 
         font_rule = f'font-family: "{font_family}";' if font_family else ""
