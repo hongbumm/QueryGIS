@@ -6,6 +6,7 @@ import requests
 import json
 import secrets
 import hashlib
+from pathlib import Path
 from qgis.utils import iface
 from qgis.core import (
     Qgis,
@@ -46,13 +47,14 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from .resources import *
+from .codex_connector.controller import CodexConnection
 from .dockwidget import ResultCardData, Ui_DockWidget
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.9.15"
+CURRENT_VERSION = "1.9.16"
 RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
 BACKEND_BASE_URL = "https://querygis.com"
 CHAT_ENDPOINT = f"{BACKEND_BASE_URL}/chat"
@@ -361,16 +363,27 @@ class OAuthCallbackWorker(QThread):
                 params = urllib.parse.parse_qs(url.query)
                 valid = url.path == "/" and params.get("state") == [expected_state]
                 message = b"Invalid QueryGIS login callback."
+                content_type = "text/plain; charset=utf-8"
                 status = 400
                 if valid:
                     code = params.get("code", [None])[0]
                     callback_error = not code and "error" in params
                     if code or callback_error:
                         status = 200
-                        message = b"Return to QueryGIS to finish signing in."
+                        message = b"Return to QGIS to finish signing in."
+                    if code:
+                        assets = Path(__file__).resolve().parent / "ui_assets"
+                        try:
+                            page = (assets / "oauth-welcome.html").read_bytes()
+                            mascot = base64.b64encode((assets / "querygis-hello.png").read_bytes())
+                        except OSError:
+                            pass  # The sign-in still works if packaged artwork is missing.
+                        else:
+                            message = page.replace(b"{{MASCOT_BASE64}}", mascot)
+                            content_type = "text/html; charset=utf-8"
 
                 self.send_response(status)
-                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(message)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
@@ -720,6 +733,9 @@ class QueryGIS(QObject):
         self.auth_worker = None
         self._usage_network = QtNetwork.QNetworkAccessManager(self)
         self._usage_reply = None
+        self._codex_plan_verified = False
+        self._codex_connect_pending = False
+        self._codex_connection = CodexConnection(self)
 
         # UI Bridge for thread-safe/re-entrancy-safe updates
         self.ui_bridge = UiSafeBridge()
@@ -759,6 +775,8 @@ class QueryGIS(QObject):
         return "An error occurred during code execution"
 
     def execute_with_self_correction(self, code, scope, user_input, context, retry_count=0):
+        if self._codex_connection.cancelled:
+            raise QueryRequestDenied("Codex request cancelled.")
         MAX_RETRIES = 2
 
         log_capture = QgsMessageLogCapture()
@@ -787,6 +805,8 @@ class QueryGIS(QObject):
             if isinstance(sys.stdout, io.StringIO):
                 start_log_pos = sys.stdout.tell()
 
+            if not self._codex_connection.mark_running():
+                raise QueryRequestDenied("Codex request cancelled.")
             exec(code, scope)
             
             current_output = ""
@@ -824,6 +844,8 @@ class QueryGIS(QObject):
             self._last_soft_error_info = None
             return
 
+        except QueryRequestDenied:
+            raise
         except (_SoftErrorSignal, Exception) as e:
             if newly_added_layers:
                 QgsProject.instance().removeMapLayers(newly_added_layers)
@@ -1091,6 +1113,7 @@ Message: {str(e)}
         )
 
     def unload(self):
+        self._stop_codex_connection()
         self._cancel_subscription_usage()
         if self.auth_worker and self.auth_worker.isRunning():
             self.auth_worker.requestInterruption()
@@ -1123,7 +1146,8 @@ Message: {str(e)}
             self.ui.btn_ask.clicked.connect(self.process_query)
             self.ui.btn_google_login.clicked.connect(self.handle_google_login)
             self.ui.btn_connection_google.clicked.connect(self.handle_google_login)
-            self.ui.btn_usage_refresh.clicked.connect(self.refresh_subscription_usage)
+            self.ui.btn_usage_refresh.clicked.connect(lambda: self.refresh_subscription_usage())
+            self.ui.btn_codex.clicked.connect(self._toggle_codex_connection)
             self.ui.btn_start_querygis.clicked.connect(self._start_querygis)
             self.ui.btn_save_key.clicked.connect(lambda: self._save_settings_key(self.ui.line_apikey))
             self.ui.btn_use_enterprise_key.clicked.connect(lambda: self._save_settings_key(self.ui.line_enterprise_key))
@@ -1151,6 +1175,8 @@ Message: {str(e)}
         self.dockwidget.show()
 
     def _on_dockwidget_destroyed(self):
+        self._codex_plan_verified = False
+        self._stop_codex_connection()
         self._cancel_subscription_usage()
         if self.auth_worker and self.auth_worker.isRunning():
             self.auth_worker.requestInterruption()
@@ -1206,6 +1232,7 @@ Message: {str(e)}
             container.setUpdatesEnabled(False)
         try:
             self.chat_history.append({"role": role, "content": message.title if role == "assistant-result" else message})
+            self._codex_connection.add_message(role, message)
             self.ui.empty_chat.hide()
             msg_widget = self.ui.create_message(role, message)
             self.ui.chatLayout.insertWidget(self.ui.chatLayout.count() - 1, msg_widget)
@@ -1290,6 +1317,8 @@ Message: {str(e)}
         return "\n".join(pre) + raw_code
 
     def handle_response(self, response_text: str):
+        if self._finish_cancelled_codex_request():
+            return
         self._last_token_count = None
         self._last_response_mode = ""
         self._last_prompt_full = ""
@@ -1346,9 +1375,13 @@ Message: {str(e)}
             except Exception:
                 pass
             return
+        if tool_request and self._codex_connection.active_task:
+            self.handle_error("Could not provide the context requested by QueryGIS.")
+            return
 
         display_text, code_blocks = self._parse_backend_response(response_text)
         completed = bool(display_text.strip())
+        executed = False
 
         chosen = None
         if code_blocks:
@@ -1384,20 +1417,27 @@ Message: {str(e)}
                     pass
 
                 self.append_chat_message("assistant", chosen)
-                self.start_wave_progress("Executing code")
-                final_code = self._prepend_runtime_imports(chosen)
-                try:
-                    success = self.run_code_string(final_code)
-                except QueryRequestDenied as denied:
-                    self.handle_error(str(denied))
-                    return
-                completed = success
-                if (not success) and self._retry_on_execution_failure:
-                    if self._execution_advance_triggered:
-                        self._execution_advance_triggered = False
+                if self._codex_connection.task_mode == "ask":
+                    self.append_chat_message("assistant-print", self.tr("Code prepared. Open Review Code in QueryGIS to inspect it."))
+                else:
+                    if self._finish_cancelled_codex_request():
                         return
-                    if self._advance_attempt(self._last_execution_error_message or "Execution failed"):
+                    self.start_wave_progress("Executing code")
+                    final_code = self._prepend_runtime_imports(chosen)
+                    try:
+                        completed = self.run_code_string(final_code)
+                    except QueryRequestDenied as denied:
+                        self.handle_error(str(denied))
                         return
+                    executed = completed
+                    if self._finish_cancelled_codex_request(executed=executed):
+                        return
+                    if not completed and self._retry_on_execution_failure:
+                        if self._execution_advance_triggered:
+                            self._execution_advance_triggered = False
+                            return
+                        if self._advance_attempt(self._last_execution_error_message or "Execution failed"):
+                            return
             else:
                 if (not display_text.strip()) and self._retry_on_empty_response:
                     if self._advance_attempt("Empty response from server"):
@@ -1411,6 +1451,8 @@ Message: {str(e)}
 
         if completed and show_lite_notice:
             self._maybe_show_lite_plan_notice()
+        self._codex_connection.finish(completed, executed=executed,
+                                      error="" if completed else self._last_execution_error_message)
 
         if self.ui:
             self.ui.status_label.setText("Intelligence received")
@@ -1448,6 +1490,9 @@ Message: {str(e)}
         self.append_chat_message("assistant-lite-plan", random.choice(messages))
 
     def handle_error(self, error_message: str):
+        if self._finish_cancelled_codex_request():
+            return
+        self._codex_connection.finish(False, error=error_message)
         if not self.ui:
             return
         msg = str(error_message).strip() or "Unknown error"
@@ -1496,6 +1541,9 @@ Message: {str(e)}
         return payload
 
     def _start_backend_attempt(self, mode, context_text="", tool_info="", error_message="", tool_request=None, tool_data=None):
+        if self._finish_cancelled_codex_request():
+            return
+        self._codex_connection.mark_planning()
         payload = self._build_backend_payload(
             mode=mode,
             context_text=context_text,
@@ -2587,6 +2635,7 @@ Message: {str(e)}
             not signed_in and (self._connection_required_after_logout or not self.load_api_key().strip()),
             show_login_success=self._login_confirmation_pending,
         )
+        self._update_codex_ui()
 
     def _save_settings_key(self, field):
         api_key = field.text().strip()
@@ -2678,6 +2727,8 @@ Message: {str(e)}
         self.set_user_auth(profile["sub"], profile.get("email"), profile.get("name"), profile["id_token"])
 
     def handle_logout(self):
+        self._codex_plan_verified = False
+        self._stop_codex_connection()
         self._cancel_subscription_usage()
         self.user_oauth_sub = None
         self._id_token = None
@@ -2691,6 +2742,8 @@ Message: {str(e)}
             self.ui.status_label.setText(self.tr("Signed out"))
 
     def set_user_auth(self, sub, email, name, id_token):
+        self._codex_plan_verified = False
+        self._stop_codex_connection()
         self._cancel_subscription_usage()
         self.user_oauth_sub = sub
         self._id_token = id_token
@@ -2708,13 +2761,65 @@ Message: {str(e)}
         self._login_confirmation_pending = False
         self._refresh_auth_ui()
 
-    def refresh_subscription_usage(self):
+    def _can_connect_to_codex(self):
+        return bool(self.ui and self.user_oauth_sub and self._id_token and self._codex_plan_verified)
+
+    def _can_start_codex_task(self):
+        return (
+            self._can_connect_to_codex()
+            and not self.ui.btn_ask.testAttribute(Qt.WA_ForceDisabled)
+            and not (self.worker and self.worker.isRunning())
+        )
+
+    def _update_codex_ui(self, message=""):
+        if not self.ui:
+            return
+        button_text = None
+        if self._codex_connect_pending:
+            button_text = self.tr("Cancel connection")
+            message = self.tr("Checking your Pro plan…")
+        elif self._codex_connection.bridge:
+            button_text = self.tr("Disconnect Codex")
+            message = (self.tr("Connected to Codex") if self._codex_connection.connected else
+                       self.tr("Waiting for Codex… Ask Codex to check the QueryGIS connection."))
+        self.ui.set_codex_connection(self._can_connect_to_codex(), button_text, message)
+
+    def _stop_codex_connection(self):
+        self._codex_connect_pending = False
+        self._codex_connection.stop()
+
+    def _toggle_codex_connection(self):
+        if self._codex_connect_pending or self._codex_connection.bridge:
+            self._stop_codex_connection()
+            self._update_codex_ui()
+        elif self._can_connect_to_codex():
+            if self._codex_connection.active_task:
+                self._update_codex_ui(self.tr("Wait for the previous Codex task to finish before reconnecting."))
+                return
+            self._codex_connect_pending = True
+            self._update_codex_ui()
+            self.refresh_subscription_usage(quiet=True)
+
+    def _finish_cancelled_codex_request(self, executed=False):
+        if not self._codex_connection.cancelled:
+            return False
+        self._codex_connection.finish(False, executed=executed)
+        self._request_attempt = 0
+        self._pending_attempt_start = False
+        if self.ui:
+            self.stop_wave_progress("Cancelled")
+            self.ui.btn_ask.setEnabled(True)
+            self.ui.status_label.setText(self.tr("Codex task cancelled."))
+        return True
+
+    def refresh_subscription_usage(self, *, quiet=False):
         if not self.ui or not self._id_token or self._usage_reply is not None:
             return
 
         self.ui.btn_usage_refresh.setEnabled(False)
-        self.ui.label_plan.setText(self.tr("Loading subscription…"))
-        self.ui.label_calls.clear()
+        if not quiet:
+            self.ui.label_plan.setText(self.tr("Loading subscription…"))
+            self.ui.label_calls.clear()
         request = QtNetwork.QNetworkRequest(QtCore.QUrl(SUBSCRIPTION_USAGE_ENDPOINT))
         request.setRawHeader(b"Authorization", f"Bearer {self._id_token}".encode("ascii"))
         request.setAttribute(QtNetwork.QNetworkRequest.RedirectPolicyAttribute,
@@ -2743,6 +2848,8 @@ Message: {str(e)}
         self.ui.btn_usage_refresh.setEnabled(True)
         status = reply.attribute(QtNetwork.QNetworkRequest.HttpStatusCodeAttribute)
         message = self.tr("Could not load subscription. Try refreshing.")
+        self.ui.label_calls.clear()
+        is_pro = False
         if status == 401:
             message = self.tr("Your Google session expired. Sign out and sign in again.")
         elif status == 200 and reply.error() == QtNetwork.QNetworkReply.NoError:
@@ -2756,6 +2863,7 @@ Message: {str(e)}
                             calls=calls, limit=limit, remaining=remaining
                         )
                     )
+                    is_pro = isinstance(plan, str) and plan.strip().casefold() == "pro"
                 elif usage["status"] == "not_registered":
                     message = self.tr("Sign up on the AICM website to see your plan.")
                 elif usage["status"] == "no_subscription":
@@ -2763,27 +2871,44 @@ Message: {str(e)}
             except (KeyError, TypeError, ValueError):
                 message = self.tr("Could not read subscription information. Try refreshing.")
         self.ui.label_plan.setText(message)
+        self._codex_plan_verified = is_pro
+        self._codex_connection.subscription_checked()
+        if self._codex_connect_pending:
+            self._codex_connect_pending = False
+            if self._can_connect_to_codex():
+                self._codex_connection.start()
+                return
+            self._update_codex_ui(self.tr("Could not confirm an active Pro plan."))
+        else:
+            self._update_codex_ui()
 
 
     def process_query(self):
+        self._submit_query()
+
+    def _submit_query(self, *, codex_instruction=None):
         if not self.ui:
             self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.Critical)
-            return
+            return False
 
-        if not self.ui.btn_ask.isEnabled():
-            return
+        from_codex = codex_instruction is not None
+        if from_codex:
+            if not self._codex_connection.active_task or not self._can_start_codex_task():
+                return False
+        elif not self.ui.btn_ask.isEnabled() or self._codex_connection.active_task:
+            return False
 
-        user_input = self.ui.text_query.toPlainText().strip()
+        user_input = (codex_instruction if from_codex else self.ui.text_query.toPlainText()).strip()
         if not user_input:
             self.ui.status_label.setText("Query is empty!")
             self.ui.status_label.setStyleSheet(f"background-color: {self.error_status_color}; color: white;")
-            return
+            return False
 
         id_token = self._id_token
         api_key = "" if id_token else self.load_api_key().strip()
         if not (api_key or id_token):
             self._refresh_auth_ui()
-            return
+            return False
 
         self.ui.status_label.setStyleSheet("")
         self.start_wave_progress("Processing query")
@@ -2791,7 +2916,8 @@ Message: {str(e)}
         self._current_run_id = uuid.uuid4().hex[:12]
 
         self.append_chat_message("user", user_input)
-        self.ui.text_query.clear()
+        if not from_codex:
+            self.ui.text_query.clear()
         self.ui.btn_ask.setEnabled(False)
 
         # REDACTED: Usage check (v1.6 handles this server-side to prevent UI freeze)
@@ -2842,6 +2968,8 @@ Message: {str(e)}
                 context_text=context_text,
                 tool_info=self._request_tool_info
             )
+            return True
         except Exception as e:
             logger.error(f"Query processing error: {e}")
             self.handle_error(f"Query processing failed: {str(e)}")
+            return False

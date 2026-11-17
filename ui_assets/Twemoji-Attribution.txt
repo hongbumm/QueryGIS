@@ -1,0 +1,5 @@
+The login-check.png, login-warning.png, and login-please.png graphics are from Twemoji v14.0.2.
+Copyright Twitter, Inc. and other contributors.
+Licensed under Creative Commons Attribution 4.0 International (https://creativecommons.org/licenses/by/4.0/).
+The original graphics were renamed for inclusion in this plugin.
+Source: https://github.com/twitter/twemoji/tree/v14.0.2/assets/72x72

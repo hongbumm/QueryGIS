@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Welcome to QueryGIS</title>
+  <style>
+    body {
+      box-sizing: border-box;
+      min-height: 100vh;
+      margin: 0;
+      padding: 24px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(155deg, #07271b, #0a3c2b 35%, #0f6347 77%, #148660);
+      font-family: system-ui, "Segoe UI", sans-serif;
+      color: #122d23;
+    }
+    main {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+    }
+    img {
+      width: 142px;
+      height: auto;
+      filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .22));
+    }
+    .speech {
+      position: relative;
+      padding: 26px 30px;
+      border-radius: 20px;
+      background: #f4fbf7;
+      box-shadow: 0 16px 42px rgba(0, 0, 0, .19);
+    }
+    .speech::before {
+      content: "";
+      position: absolute;
+      top: calc(50% - 9px);
+      left: -8px;
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      background: inherit;
+      transform: rotate(45deg);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      line-height: 1.2;
+    }
+    p {
+      margin: 10px 0 0;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: #3c594c;
+    }
+    @media (max-width: 560px) {
+      main { flex-direction: column; gap: 16px; }
+      .speech { padding: 22px; text-align: center; }
+      .speech::before { top: -8px; left: calc(50% - 9px); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="data:image/png;base64,{{MASCOT_BASE64}}" alt="" width="118" height="102">
+    <div class="speech">
+      <h1>Welcome to QueryGIS.</h1>
+      <p>Return to QGIS to finish signing in.</p>
+    </div>
+  </main>
+</body>
+</html>

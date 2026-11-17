@@ -21,6 +21,7 @@ if QtCore.QT_VERSION_STR.startswith("5."):
 _ = QtCore.QCoreApplication.translate
 UI_ASSETS = Path(__file__).resolve().parent / "ui_assets"
 PRICING_URL = "https://www.3dlabs-querygis.co.kr/pricing"
+CODEX_GUIDE_URL = "https://github.com/hongbumm/QueryGIS_with_Codex"
 FONT_SIZES = {"S": 10, "M": 12, "L": 14}
 DEFAULT_LAYER_HEIGHT = 270
 CHART_PREVIEW_ROWS = 8
@@ -864,10 +865,9 @@ class Ui_DockWidget:
         if self._pretendard_family is None:
             for weight in ("Regular", "Bold"):
                 try:
-                    font_data = (UI_ASSETS / f"Pretendard-{weight}.otf").read_bytes()
+                    font_data = (UI_ASSETS / f"Pretendard-{weight}.ttf").read_bytes()
                 except OSError:
                     continue
-                # Windows Qt can reject these OpenType faces when registered by path.
                 font_id = QtGui.QFontDatabase.addApplicationFontFromData(QtCore.QByteArray(font_data))
                 if font_id >= 0 and self._pretendard_family is None:
                     families = QtGui.QFontDatabase.applicationFontFamilies(font_id)
@@ -1043,24 +1043,40 @@ class Ui_DockWidget:
 
         self.btn_google_login = self._google_button()
         content.addWidget(self.btn_google_login)
-        codex_preview = QtWidgets.QWidget()
-        codex_preview.setObjectName("codexPreview")
-        codex_preview.setToolTip(_("DockWidget", "Coming soon"))
-        codex_layout = QtWidgets.QVBoxLayout(codex_preview)
+        self.codex_panel = QtWidgets.QWidget()
+        codex_layout = QtWidgets.QVBoxLayout(self.codex_panel)
         codex_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_codex = QtWidgets.QPushButton(_("DockWidget", "Connect with Codex"))
-        self.btn_codex.setEnabled(False)
-        self.btn_codex.setAccessibleDescription(codex_preview.toolTip())
-        self.btn_codex.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
-        codex_blur = QtWidgets.QGraphicsBlurEffect(self.btn_codex)
-        codex_blur.setBlurRadius(2)
-        self.btn_codex.setGraphicsEffect(codex_blur)
+        self._codex_blur = QtWidgets.QGraphicsBlurEffect(self.btn_codex)
+        self._codex_blur.setBlurRadius(2)
+        self.btn_codex.setGraphicsEffect(self._codex_blur)
         codex_layout.addWidget(self.btn_codex)
-        content.addWidget(codex_preview)
+        codex_help = QtWidgets.QPushButton(_("DockWidget", "How to connect with Codex?"))
+        codex_help.setObjectName("codexHelpLink")
+        codex_help.setCursor(QtCore.Qt.PointingHandCursor)
+        codex_help.setToolTip(_("DockWidget", "Open the QueryGIS setup guide on GitHub"))
+        codex_help.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(CODEX_GUIDE_URL)))
+        codex_layout.addWidget(codex_help, 0, QtCore.Qt.AlignLeft)
+        self.codex_status = self._auth_message_label()
+        codex_layout.addWidget(self.codex_status)
+        self.set_codex_connection(False)
+        content.addWidget(self.codex_panel)
         self.auth_status = self._auth_message_label()
         content.addWidget(self.auth_status)
         self.settings_panel.hide()
         self.settings_panel.setEnabled(False)
+
+    def set_codex_connection(self, eligible, button_text=None, message=""):
+        tooltip = "" if eligible else _("DockWidget", "Only available in Pro plan")
+        self.codex_panel.setToolTip(tooltip)
+        self.btn_codex.setToolTip(tooltip)
+        self.btn_codex.setAccessibleDescription(tooltip)
+        self.btn_codex.setEnabled(eligible)
+        self.btn_codex.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, not eligible)
+        self._codex_blur.setEnabled(not eligible)
+        self.btn_codex.setText(button_text or _("DockWidget", "Connect with Codex"))
+        self.codex_status.setText(message)
+        self.codex_status.setVisible(bool(message))
 
     def set_api_key(self, api_key):
         self._saved_api_key = api_key
@@ -1167,7 +1183,27 @@ class Ui_DockWidget:
         success_title = QtWidgets.QLabel(_("DockWidget", "Login Successful!"))
         success_title.setObjectName("panelTitle")
         success_title.setAlignment(QtCore.Qt.AlignCenter)
+        success_title.setWordWrap(True)
         success_layout.addWidget(success_title)
+
+        notices = QtWidgets.QGridLayout()
+        notices.setHorizontalSpacing(8)
+        notices.setVerticalSpacing(8)
+        notices.setColumnStretch(1, 1)
+        for row, (icon_file, message) in enumerate((
+            ("login-check.png", _("DockWidget", "Select the layers you want to use before sending a request.")),
+            ("login-warning.png", _("DockWidget", "AI can make mistakes. Save your files frequently.")),
+            ("login-please.png", _("DockWidget", "Please avoid including personal information in your requests.")),
+        )):
+            notice_icon = QtWidgets.QLabel()
+            notice_icon.setPixmap(QtGui.QIcon(str(UI_ASSETS / icon_file)).pixmap(18, 18))
+            notice = QtWidgets.QLabel(message)
+            notice.setObjectName("mutedLabel")
+            notice.setWordWrap(True)
+            notices.addWidget(notice_icon, row, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter)
+            notices.addWidget(notice, row, 1)
+        success_layout.addLayout(notices)
+
         self.btn_start_querygis = QtWidgets.QPushButton(_("DockWidget", "Start QueryGIS"))
         self.btn_start_querygis.setObjectName("askButton")
         self.btn_start_querygis.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1712,6 +1748,12 @@ class Ui_DockWidget:
             QPushButton#connectionLink:hover {{ color: {text}; text-decoration: underline; }}
             QPushButton#connectionLink:focus {{ border-color: {accent}; }}
             QPushButton#connectionLink:disabled {{ color: {muted}; }}
+            QPushButton#codexHelpLink {{
+                background: transparent; color: {muted}; border: 1px solid transparent;
+                padding: 2px 4px; font-size: {max(9, points - 2)}pt;
+            }}
+            QPushButton#codexHelpLink:hover {{ text-decoration: underline; }}
+            QPushButton#codexHelpLink:focus {{ border-color: {accent}; }}
             QPushButton#googleButton {{
                 background: white; color: #1f1f1f; border-color: #747775;
                 padding: 7px 12px; border-radius: 7px;

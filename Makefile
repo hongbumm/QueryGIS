@@ -50,7 +50,7 @@ UI_FILES = query_gis_dialog_base.ui
 
 EXTRAS = metadata.txt icon.png
 
-EXTRA_DIRS = ui_assets
+EXTRA_DIRS = ui_assets codex_connector
 
 COMPILED_RESOURCE_FILES = resources.py
 
