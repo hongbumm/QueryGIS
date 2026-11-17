@@ -52,7 +52,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.9.12"
+CURRENT_VERSION = "1.9.15"
 RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
 BACKEND_BASE_URL = "https://querygis.com"
 CHAT_ENDPOINT = f"{BACKEND_BASE_URL}/chat"
@@ -692,6 +692,7 @@ class QueryGIS(QObject):
         self._last_context_text = ""
         self._last_generated_code = ""
         self._current_run_id = None
+        self._last_counted_lite_run_id = None
         self._last_soft_error_info = None
         self._request_attempt = 0
         self._request_user_input = ""
@@ -1293,6 +1294,7 @@ Message: {str(e)}
         self._last_response_mode = ""
         self._last_prompt_full = ""
         tool_request = None
+        show_lite_notice = False
         try:
             data = json.loads(response_text)
             if isinstance(data, dict):
@@ -1311,6 +1313,7 @@ Message: {str(e)}
                         self._last_token_count = None
                 self._last_response_mode = str(data.get("mode") or "")
                 tool_request = data.get("tool_request")
+                show_lite_notice = data.get("lite_plan_notice") is True
                 if "prompt_full" in data and isinstance(data.get("prompt_full"), str):
                     self._last_prompt_full = data.get("prompt_full")
         except Exception:
@@ -1345,6 +1348,7 @@ Message: {str(e)}
             return
 
         display_text, code_blocks = self._parse_backend_response(response_text)
+        completed = bool(display_text.strip())
 
         chosen = None
         if code_blocks:
@@ -1387,6 +1391,7 @@ Message: {str(e)}
                 except QueryRequestDenied as denied:
                     self.handle_error(str(denied))
                     return
+                completed = success
                 if (not success) and self._retry_on_execution_failure:
                     if self._execution_advance_triggered:
                         self._execution_advance_triggered = False
@@ -1404,6 +1409,9 @@ Message: {str(e)}
                     return
             self.append_chat_message("assistant-print", display_text.strip())
 
+        if completed and show_lite_notice:
+            self._maybe_show_lite_plan_notice()
+
         if self.ui:
             self.ui.status_label.setText("Intelligence received")
             self.ui.status_label.setStyleSheet(f"background-color: {self.success_status_color}; color: black;")
@@ -1415,6 +1423,29 @@ Message: {str(e)}
         if self.worker and self.worker.isRunning():
             return
         self._request_attempt = 0
+
+    def _maybe_show_lite_plan_notice(self):
+        if not self.ui or not self.user_oauth_sub or not self._request_id_token or self._request_id_token != self._id_token:
+            return
+        if not self._current_run_id or self._last_counted_lite_run_id == self._current_run_id:
+            return
+        self._last_counted_lite_run_id = self._current_run_id
+
+        account_key = hashlib.sha256(self.user_oauth_sub.encode("utf-8")).hexdigest()
+        key = f"QueryGIS/lite_notice_count/{account_key}"
+        settings = QSettings()
+        count = (settings.value(key, 0, type=int) + 1) % 3
+        settings.setValue(key, count)
+        if count:
+            return
+        messages = (
+            self.tr("The Lite model can miss details in complex requests. Upgrade to a more capable model for better results."),
+            self.tr("GIS data can be challenging for AI to interpret. Upgrade to a model that can better understand your layers and spatial data."),
+            self.tr("Higher-tier plans include higher monthly request limits. Upgrade to run more analyses each month."),
+            self.tr("Working on a multi-step QGIS task? Upgrade for better support with workflows that combine several operations."),
+            self.tr("Working with multiple layers or coordinate systems? Upgrade to a more capable model for help with the details that matter."),
+        )
+        self.append_chat_message("assistant-lite-plan", random.choice(messages))
 
     def handle_error(self, error_message: str):
         if not self.ui:
@@ -1972,11 +2003,11 @@ Message: {str(e)}
                 text.lstrip().startswith(("try:", "import ", "from "))
             )
         )
-        if not looks_like_code and "show_result" in text:
+        if not looks_like_code and re.search(r"\b(?:print|show_result)\s*\(", text):
             try:
                 looks_like_code = any(
                     isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id == "show_result" for node in ast.walk(ast.parse(text))
+                    and node.func.id in ("print", "show_result") for node in ast.walk(ast.parse(text.strip()))
                 )
             except SyntaxError:
                 pass
@@ -1984,40 +2015,63 @@ Message: {str(e)}
             code_blocks.append(text.strip())
         return code_blocks
 
+    @staticmethod
+    def _gemini_answer_text(value):
+        if isinstance(value, str) and value.lstrip().startswith("{"):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                return None
+        if not isinstance(value, dict) or not isinstance(value.get("candidates"), list):
+            return None
+
+        for candidate in value["candidates"]:
+            content = candidate.get("content") if isinstance(candidate, dict) else None
+            parts = content.get("parts") if isinstance(content, dict) else None
+            if not isinstance(parts, list):
+                continue
+            answer = "".join(
+                part["text"] for part in parts
+                if isinstance(part, dict) and not part.get("thought") and isinstance(part.get("text"), str)
+            )
+            if answer.strip():
+                return answer
+        return ""
+
     def _parse_backend_response(self, response_text: str):
-        display_text = response_text
-        code_blocks = []
         try:
             data = json.loads(response_text)
-            if isinstance(data, dict):
-                candidate = None
-                if "output" in data:
-                    out = data["output"]
-                    if isinstance(out, str):
-                        candidate = out
-                    elif isinstance(out, dict) and "text" in out:
-                        candidate = out["text"]
-                if candidate is None and "response" in data:
-                    candidate = data["response"]
-                if candidate is None and "text" in data:
-                    candidate = data["text"]
-                if candidate is None and "choices" in data and isinstance(data["choices"], list) and data["choices"]:
-                    ch = data["choices"][0]
-                    if isinstance(ch, dict):
-                        if "message" in ch and isinstance(ch["message"], dict) and "content" in ch["message"]:
-                            candidate = ch["message"]["content"]
-                        elif "text" in ch:
-                            candidate = ch["text"]
-                if candidate is not None:
-                    display_text = str(candidate)
-                else:
-                    display_text = json.dumps(data, ensure_ascii=False, indent=2)
-            elif isinstance(data, str):
-                display_text = data
-            else:
-                display_text = json.dumps(data, ensure_ascii=False, indent=2)
-        except Exception:
-            display_text = response_text
+        except ValueError:
+            data = response_text
+
+        candidate = None
+        if isinstance(data, dict):
+            out = data.get("output")
+            if isinstance(out, str):
+                candidate = out
+            elif isinstance(out, dict):
+                if "text" in out:
+                    candidate = out["text"]
+                elif isinstance(out.get("candidates"), list):
+                    candidate = out
+            if candidate is None:
+                candidate = data.get("response")
+            if candidate is None:
+                candidate = data.get("text")
+            choices = data.get("choices")
+            if candidate is None and isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                choice = choices[0]
+                message = choice.get("message")
+                candidate = message["content"] if isinstance(message, dict) and "content" in message else choice.get("text")
+
+        gemini_text = self._gemini_answer_text(data if candidate is None else candidate)
+        if gemini_text is not None:
+            display_text = gemini_text or self.tr("The model did not return an answer.")
+        elif candidate is not None:
+            display_text = str(candidate)
+        else:
+            display_text = data if isinstance(data, str) else json.dumps(data, ensure_ascii=False, indent=2)
+
         code_blocks = self._extract_code_blocks(display_text)
         if len(code_blocks) <= 1:
             code = code_blocks[0] if code_blocks else display_text.strip()

@@ -20,6 +20,7 @@ if QtCore.QT_VERSION_STR.startswith("5."):
 
 _ = QtCore.QCoreApplication.translate
 UI_ASSETS = Path(__file__).resolve().parent / "ui_assets"
+PRICING_URL = "https://www.3dlabs-querygis.co.kr/pricing"
 FONT_SIZES = {"S": 10, "M": 12, "L": 14}
 DEFAULT_LAYER_HEIGHT = 270
 CHART_PREVIEW_ROWS = 8
@@ -388,7 +389,7 @@ class _QuestionInput(QtWidgets.QPlainTextEdit):
         self._fit_timer = QtCore.QTimer(self)
         self._fit_timer.setSingleShot(True)
         self._fit_timer.timeout.connect(self._fit_height)
-        self.textChanged.connect(self.schedule_fit)
+        self.textChanged.connect(self._fit_height)
 
     def schedule_fit(self):
         self._fit_timer.start(0)
@@ -397,36 +398,44 @@ class _QuestionInput(QtWidgets.QPlainTextEdit):
         super().resizeEvent(event)
         self.schedule_fit()
 
+    def inputMethodEvent(self, event):
+        super().inputMethodEvent(event)
+        self._fit_height()
+
     def _fit_height(self):
         document = self.document()
         margin = document.documentMargin()
         width = max(1, self.maximumViewportSize().width() - 2 * margin)
-        lines = 0
+        line_heights = []
         block = document.firstBlock()
-        while block.isValid() and lines <= self.MAX_VISIBLE_LINES:
+        while block.isValid() and len(line_heights) <= self.MAX_VISIBLE_LINES:
             layout = QtGui.QTextLayout(block.text(), self.font(), self.viewport())
             layout.setTextOption(document.defaultTextOption())
+            preedit = block.layout()
+            if preedit is not None and preedit.preeditAreaText():
+                layout.setPreeditArea(preedit.preeditAreaPosition(), preedit.preeditAreaText())
             layout.beginLayout()
-            block_lines = 0
-            while lines + block_lines <= self.MAX_VISIBLE_LINES:
+            while len(line_heights) <= self.MAX_VISIBLE_LINES:
                 line = layout.createLine()
                 if not line.isValid():
                     break
                 line.setLineWidth(width)
-                block_lines += 1
+                line_heights.append(ceil(line.height()))
             layout.endLayout()
-            lines += max(1, block_lines)
             block = block.next()
 
-        needs_scroll = lines > self.MAX_VISIBLE_LINES
+        needs_scroll = len(line_heights) > self.MAX_VISIBLE_LINES
         scroll_policy = QtCore.Qt.ScrollBarAsNeeded if needs_scroll else QtCore.Qt.ScrollBarAlwaysOff
         if self.verticalScrollBarPolicy() != scroll_policy:
             self.setVerticalScrollBarPolicy(scroll_policy)
         padding = self.height() - self.viewport().height() + 2 * margin
-        height = ceil(min(self.MAX_VISIBLE_LINES, max(2, lines)) * self.fontMetrics().lineSpacing() + padding)
+        line_height = line_heights[0] if line_heights else self.fontMetrics().height()
+        height = ceil(max(2 * line_height, sum(line_heights[:self.MAX_VISIBLE_LINES])) + padding) + 1
         if self.height() != height:
             self.setFixedHeight(height)
-        if needs_scroll and self.hasFocus():
+        if not needs_scroll:
+            self.verticalScrollBar().setValue(0)
+        elif self.hasFocus():
             self.ensureCursorVisible()
 
 
@@ -475,6 +484,42 @@ class _ReplyText(QtWidgets.QTextEdit):
         height = min(maximum, ceil(text_height + frame_height))
         if self.height() != height:
             self.setFixedHeight(height)
+
+
+class _LitePlanNotice(QtWidgets.QFrame):
+    def __init__(self, message, parent):
+        super().__init__(parent)
+        self.setObjectName("litePlanNotice")
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(12, 9, 12, 10)
+        layout.setSpacing(8)
+
+        label = QtWidgets.QLabel(message)
+        label.setTextFormat(QtCore.Qt.PlainText)
+        label.setWordWrap(True)
+        layout.addWidget(label)
+
+        subscribe = QtWidgets.QPushButton(_("DockWidget", "Subscribe"))
+        subscribe.setObjectName("askButton")
+        subscribe.setCursor(QtCore.Qt.PointingHandCursor)
+        subscribe.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(PRICING_URL)))
+        layout.addWidget(subscribe, 0, QtCore.Qt.AlignLeft)
+        self.ensurePolished()
+        margins = parent.layout().contentsMargins()
+        width = parent.width() - margins.left() - margins.right()
+        self.resize(max(1, width), self.sizeHint().height())
+        self._fit_height()
+
+    def event(self, event):
+        handled = super().event(event)
+        if event.type() in (QtCore.QEvent.LayoutRequest, QtCore.QEvent.Resize) and self.layout() is not None:
+            self._fit_height()
+        return handled
+
+    def _fit_height(self):
+        height = self.layout().totalHeightForWidth(self.width())
+        if height > 0 and self.minimumHeight() != height:
+            self.setMinimumHeight(height)
 
 
 class _DockSplitterHandle(QtWidgets.QSplitterHandle):
@@ -1176,6 +1221,8 @@ class Ui_DockWidget:
             label.setVisible(bool(message))
 
     def create_message(self, role, message):
+        if role == "assistant-lite-plan":
+            return _LitePlanNotice(message, self.chat_surface)
         row = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1243,6 +1290,7 @@ class Ui_DockWidget:
             tabs.setObjectName("resultTabs")
             tabs.setExpanding(False)
             tabs.setDrawBase(False)
+            tabs.setElideMode(QtCore.Qt.ElideNone)
             layout.addWidget(tabs)
 
         for label, widget, _is_chart in views:
@@ -1613,7 +1661,7 @@ class Ui_DockWidget:
             QPlainTextEdit#questionInput {{ border: none; background: {surface}; }}
             QPlainTextEdit#codePreview {{ background: {background}; font-size: {points}pt; }}
             QLineEdit:focus, QPlainTextEdit:focus {{ border-color: {accent}; }}
-            QTextEdit#resultMessage, QFrame#codeReview, QFrame#resultCard {{
+            QTextEdit#resultMessage, QFrame#codeReview, QFrame#resultCard, QFrame#litePlanNotice {{
                 background: {surface}; color: {text}; border: 1px solid {border}; border-radius: 11px;
             }}
             QTableView#resultTable {{
@@ -1626,8 +1674,10 @@ class Ui_DockWidget:
                 {font_rule} font-size: {points}pt; font-weight: bold;
                 background: {inset}; color: {text}; padding: 3px 7px; border: none;
             }}
-            QTabBar#resultTabs::tab {{
+            QTabBar#resultTabs {{
                 {font_rule} font-size: {points}pt;
+            }}
+            QTabBar#resultTabs::tab {{
                 background: {surface}; color: {muted}; border: 1px solid {border};
                 border-radius: 6px; padding: 3px 10px; margin-right: 4px;
             }}
