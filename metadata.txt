@@ -4,7 +4,8 @@
 
 [general]
 name=QueryGIS
-qgisMinimumVersion=3.0
+qgisMinimumVersion=3.28
+qgisMaximumVersion=3.44
 description=Contorl QGIS with LLM, Make it Easier!
 version=1.9.16
 author=3DLabs, Juseong Lee
