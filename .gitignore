@@ -1,0 +1,7 @@
+﻿# editor settings
+.vscode/
+output
+
+# Python bytecode
+__pycache__/
+*.pyc
