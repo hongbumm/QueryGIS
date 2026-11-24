@@ -7,8 +7,8 @@ import shutil
 import shlex
 import tempfile
 from pathlib import Path
-from PyQt5.QtWidgets import QMessageBox, QApplication, QProgressDialog
 from qgis.PyQt.QtCore import QTimer, Qt, QProcess, QCoreApplication
+from qgis.PyQt.QtWidgets import QMessageBox, QApplication, QProgressDialog
 from qgis.core import QgsProject
 
 def get_macos_version():
@@ -222,7 +222,7 @@ def install_requirements_cross_platform():
     
     # Progress dialog
     progress = QProgressDialog("Installing dependencies...", None, 0, 0)
-    progress.setWindowModality(Qt.ApplicationModal)
+    progress.setWindowModality(Qt.WindowModality.ApplicationModal)
     progress.setCancelButton(None)
     progress.setMinimumDuration(0)
     progress.setWindowTitle("Please Wait")
@@ -251,12 +251,12 @@ def install_requirements_cross_platform():
                    f"Missing packages: {', '.join(missing_packages)}\n\n"
                    f"Choose an installation method:")
         
-        terminal_btn = msg.addButton("Open in Terminal", QMessageBox.ActionRole)
-        script_btn = msg.addButton("Run Install Script", QMessageBox.ActionRole)
-        manual_btn = msg.addButton("Show Manual Commands", QMessageBox.ActionRole)
-        cancel_btn = msg.addButton("Skip", QMessageBox.RejectRole)
+        terminal_btn = msg.addButton("Open in Terminal", QMessageBox.ButtonRole.ActionRole)
+        script_btn = msg.addButton("Run Install Script", QMessageBox.ButtonRole.ActionRole)
+        manual_btn = msg.addButton("Show Manual Commands", QMessageBox.ButtonRole.ActionRole)
+        cancel_btn = msg.addButton("Skip", QMessageBox.ButtonRole.RejectRole)
         
-        msg.exec_()
+        msg.exec()
         
         clicked = msg.clickedButton()
         
@@ -305,7 +305,7 @@ Or all at once:
             msg_box.setWindowTitle("Installation Commands")
             msg_box.setText("Copy these commands to install manually:")
             msg_box.setDetailedText(commands)
-            msg_box.exec_()
+            msg_box.exec()
     
     elif system == "Windows":
             from functools import partial
@@ -380,10 +380,10 @@ def prompt_restart():
     msg.setText("Required libraries have been successfully installed.\n\n"
                 "QGIS must be restarted for the plugin to function properly.\n\n"
                 "Restart QGIS now?")
-    msg.setIcon(QMessageBox.Information)
-    msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+    msg.setIcon(QMessageBox.Icon.Information)
+    msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     
-    if msg.exec_() != QMessageBox.Yes:
+    if msg.exec() != QMessageBox.StandardButton.Yes:
         return
 
     try:
@@ -446,6 +446,8 @@ def prompt_restart():
             args = [proj_path] if proj_path else []
             ok = QProcess.startDetached(program, args)
 
+    if isinstance(ok, tuple):
+        ok = ok[0]
     if not ok:
         QMessageBox.information(None, "Restart Required",
                               "Could not restart QGIS automatically.\n"

@@ -10,7 +10,7 @@ from pathlib import Path
 from qgis.utils import iface
 from qgis.core import (
     Qgis,
-    QgsApplication, QgsProject, QgsMapLayer, QgsRasterLayer, QgsVectorLayer,
+    QgsApplication, QgsProject, QgsMapLayer, QgsPointCloudLayer, QgsRasterLayer, QgsVectorLayer,
     QgsField, QgsFeature, QgsGeometry, QgsPointXY, QgsRectangle,
     QgsCoordinateReferenceSystem, QgsVectorFileWriter, QgsProcessingFeatureSourceDefinition,
     QgsFeatureSink, QgsFeatureRequest, QgsProcessingFeedback, QgsMessageLog,
@@ -20,28 +20,13 @@ from qgis.core import (
     QgsProperty, QgsWkbTypes
 )
 
-try:
-    from qgis.PyQt import QtCore, QtGui, QtNetwork, QtWidgets
-    from qgis.PyQt.QtCore import (
-        QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread,
-        pyqtSignal, QEvent, QVariant, QObject
-    )
-    from qgis.PyQt.QtGui import QIcon
-    from qgis.PyQt.QtWidgets import (
-        QAction, QDockWidget, QWidget, QHBoxLayout, QLabel,
-        QApplication
-    )
-except ImportError:
-    from PyQt5 import QtCore, QtGui, QtNetwork
-    from PyQt5.QtCore import (
-        QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread,
-        pyqtSignal, QEvent, QVariant, QObject
-    )
-    from PyQt5.QtGui import QIcon
-    from PyQt5.QtWidgets import (
-        QAction, QDockWidget, QWidget, QHBoxLayout, QLabel,
-        QApplication
-    )
+from qgis.PyQt import QtCore, QtGui, QtNetwork, QtWidgets
+from qgis.PyQt.QtCore import (
+    QSettings, QTranslator, QCoreApplication, Qt, QTimer, QThread,
+    pyqtSignal, QEvent, QMetaType, QVariant, QObject
+)
+from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtWidgets import QDockWidget, QWidget, QHBoxLayout, QLabel, QApplication
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -54,9 +39,45 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.9.17"
+CURRENT_VERSION = "1.9.18"
 RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
-BACKEND_BASE_URL = "https://querygis.com"
+
+
+def _backend_base_url():
+    url = os.environ.get("QUERYGIS_BACKEND_URL", "").strip().rstrip("/") or "https://querygis.com"
+    parsed = urllib.parse.urlsplit(url)
+    is_loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path or parsed.query or parsed.fragment
+        or (parsed.scheme != "https" and not (parsed.scheme == "http" and is_loopback))
+    ):
+        raise ValueError("QUERYGIS_BACKEND_URL must be an HTTPS origin or a local HTTP origin.")
+    return url
+
+
+def _runtime_metadata():
+    version_int = Qgis.versionInt()
+    return {
+        "qgis_version": f"{version_int // 10000}.{version_int // 100 % 100}.{version_int % 100}",
+        "qgis_version_int": version_int,
+        "qt_major": QtCore.QT_VERSION >> 16,
+    }
+
+
+def _layer_kind(layer):
+    if isinstance(layer, QgsVectorLayer):
+        return "vector"
+    if isinstance(layer, QgsRasterLayer):
+        return "raster"
+    if isinstance(layer, QgsPointCloudLayer):
+        return "pointcloud"
+    return "unknown"
+
+
+BACKEND_BASE_URL = _backend_base_url()
 CHAT_ENDPOINT = f"{BACKEND_BASE_URL}/chat"
 FIX_ENDPOINT = f"{BACKEND_BASE_URL}/fix-code"
 REPORT_ENDPOINT = f"{BACKEND_BASE_URL}/report-error"
@@ -571,7 +592,7 @@ class BackendWorker(QThread):
                 except: pass
 
             except requests.exceptions.ConnectionError:
-                self.error.emit("Could not reach querygis.com. Check your connection and try again.")
+                self.error.emit(f"Could not reach {BACKEND_BASE_URL}. Check your connection and try again.")
 
             except requests.exceptions.RequestException as e:
                 self.error.emit(f"Network error: {str(e)}")
@@ -739,7 +760,7 @@ class QueryGIS(QObject):
 
         # UI Bridge for thread-safe/re-entrancy-safe updates
         self.ui_bridge = UiSafeBridge()
-        self.ui_bridge.requested.connect(self.update_wave_message, Qt.QueuedConnection)
+        self.ui_bridge.requested.connect(self.update_wave_message, Qt.ConnectionType.QueuedConnection)
     def _send_log_async(self, row_data):
         if not ENABLE_REMOTE_LOG:
             return
@@ -933,6 +954,8 @@ Message: {str(e)}
             payload = {
                 **self._request_credentials(),
                 **RESULT_CAPABILITIES,
+                "runtime": _runtime_metadata(),
+                "run_id": self._current_run_id,
                 "context": context_for_fix,
                 "user_input": user_input,
                 "broken_code": broken_code_for_fix,
@@ -1018,7 +1041,7 @@ Message: {str(e)}
         self.ui.progressBar.setRange(0, 0)
         
         # Change cursor to wait during request
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         
         self.wave_manager.start_wave(message)
 
@@ -1089,7 +1112,8 @@ Message: {str(e)}
                    add_to_menu=True, add_to_toolbar=True, status_tip=None,
                    whats_this=None, parent=None):
         icon = QIcon(icon_path)
-        action = QAction(icon, text, parent)
+        action_class = getattr(QtGui, "QAction", None) or QtWidgets.QAction
+        action = action_class(icon, text, parent)
         action.triggered.connect(callback)
         action.setEnabled(enabled_flag)
         if status_tip is not None:
@@ -1135,7 +1159,7 @@ Message: {str(e)}
     def run(self):
         if not self.dockwidget:
             self.dockwidget = QDockWidget("QueryGIS (Backend)", self.iface.mainWindow())
-            self.dockwidget.setAttribute(Qt.WA_DeleteOnClose, True)
+            self.dockwidget.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
             self.dockwidget.setObjectName("QueryGISDockWidget")
             self.dockwidget.destroyed.connect(self._on_dockwidget_destroyed)
 
@@ -1170,7 +1194,7 @@ Message: {str(e)}
             if tree_view and tree_view.selectionModel():
                 tree_view.selectionModel().selectionChanged.connect(self.refresh_layer_list)
 
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dockwidget)
 
         self.dockwidget.show()
 
@@ -1184,9 +1208,9 @@ Message: {str(e)}
         self.ui = None
 
     def eventFilter(self, obj, event):
-        if (self.ui and obj == self.ui.text_query and event.type() == QEvent.KeyPress):
-            if event.key() in (Qt.Key_Return, Qt.Key_Enter) and event.modifiers() in (
-                Qt.ControlModifier, Qt.ControlModifier | Qt.KeypadModifier
+        if (self.ui and obj == self.ui.text_query and event.type() == QEvent.Type.KeyPress):
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and event.modifiers() in (
+                Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.KeypadModifier
             ):
                 self.process_query()
                 return True
@@ -1281,24 +1305,16 @@ Message: {str(e)}
                 provider = lyr.dataProvider().name().lower()
             
             is_table = any(ext in source for ext in [".csv", ".xlsx", ".xls", ".txt"]) or provider == "delimitedtext"
-            
-            if is_table:
-                type_symbol = "📊"
-            elif lyr.type() == QgsMapLayer.VectorLayer:
-                type_symbol = "🟦"
-            elif lyr.type() == QgsMapLayer.RasterLayer:
-                type_symbol = "🟩"
-            elif lyr.type() == getattr(QgsMapLayer, 'PointCloudLayer', 3):
-                type_symbol = "☁️"
-            else:
-                type_symbol = "📁"
+            type_symbol = "📊" if is_table else {
+                "vector": "🟦", "raster": "🟩", "pointcloud": "☁️",
+            }.get(_layer_kind(lyr), "📁")
             
             type_label = QLabel(type_symbol)
             lyr_layout.addWidget(type_label)
             
             # Layer Name Label (Static)
             name_label = QLabel(lyr.name())
-            name_label.setTextFormat(Qt.PlainText)
+            name_label.setTextFormat(Qt.TextFormat.PlainText)
             name_label.setWordWrap(True)
             lyr_layout.addWidget(name_label, 1)
             
@@ -1524,6 +1540,8 @@ Message: {str(e)}
         payload = {
             **self._request_credentials(),
             **RESULT_CAPABILITIES,
+            "runtime": _runtime_metadata(),
+            "run_id": self._current_run_id,
             "context": context_text or "",
             "user_input": self._request_user_input,
             "model": self._request_model,
@@ -1621,6 +1639,8 @@ Message: {str(e)}
         payload = {
             **self._request_credentials(),
             **RESULT_CAPABILITIES,
+            "runtime": _runtime_metadata(),
+            "run_id": self._current_run_id,
             "context": context,
             "user_input": user_input,
             "broken_code": broken_code[:2000],  # 길이 제한
@@ -1926,6 +1946,7 @@ Message: {str(e)}
             'QgsProperty': QgsProperty,
             'QgsWkbTypes': QgsWkbTypes,
             'QVariant': QVariant,
+            'QMetaType': QMetaType,
             'tempfile': tempfile,
             'os': os,
             'processing': sys.modules.get('processing'),
@@ -2292,10 +2313,7 @@ Message: {str(e)}
             try:
                 info = {
                     "name": lyr.name(),
-                    "type": ("vector" if lyr.type() == QgsMapLayer.VectorLayer
-                            else "raster" if lyr.type() == QgsMapLayer.RasterLayer
-                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
-                            else "unknown"),
+                    "type": _layer_kind(lyr),
                     "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
                     "provider": getattr(lyr, "providerType", lambda: None)(),
                     "source": getattr(lyr, "source", lambda: None)(),
@@ -2350,10 +2368,7 @@ Message: {str(e)}
             try:
                 info = {
                     "name": lyr.name(),
-                    "type": ("vector" if lyr.type() == QgsMapLayer.VectorLayer
-                            else "raster" if lyr.type() == QgsMapLayer.RasterLayer
-                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
-                            else "unknown"),
+                    "type": _layer_kind(lyr),
                     "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
                     "provider": getattr(lyr, "providerType", lambda: None)(),
                     "source": getattr(lyr, "source", lambda: None)(),
@@ -2434,10 +2449,7 @@ Message: {str(e)}
             try:
                 info = {
                     "name": lyr.name(),
-                    "type": ("vector" if lyr.type() == QgsMapLayer.VectorLayer
-                            else "raster" if lyr.type() == QgsMapLayer.RasterLayer
-                            else "pointcloud" if getattr(QgsMapLayer, 'PointCloudLayer', 3) == lyr.type()
-                            else "unknown"),
+                    "type": _layer_kind(lyr),
                     "crs": lyr.crs().authid() if hasattr(lyr, "crs") else None,
                     "provider": getattr(lyr, "providerType", lambda: None)(),
                     "source": getattr(lyr, "source", lambda: None)(),
@@ -2497,9 +2509,7 @@ Message: {str(e)}
             if active:
                 active_info = {
                     "name": active.name(),
-                    "type": ("vector" if active.type() == QgsMapLayer.VectorLayer
-                             else "raster" if active.type() == QgsMapLayer.RasterLayer
-                             else "unknown")
+                    "type": _layer_kind(active)
                 }
                 if isinstance(active, QgsVectorLayer):
                     active_info["geometry"] = QgsWkbTypes.displayString(active.wkbType())
@@ -2576,7 +2586,7 @@ Message: {str(e)}
                         elif layer:
                             data[name] = {
                                 "name": layer.name(),
-                                "type": "raster" if layer.type() == QgsMapLayer.RasterLayer else "unknown"
+                                "type": "raster" if isinstance(layer, QgsRasterLayer) else "unknown"
                             }
                 except Exception:
                     pass
@@ -2767,7 +2777,7 @@ Message: {str(e)}
     def _can_start_codex_task(self):
         return (
             self._can_connect_to_codex()
-            and not self.ui.btn_ask.testAttribute(Qt.WA_ForceDisabled)
+            and not self.ui.btn_ask.testAttribute(Qt.WidgetAttribute.WA_ForceDisabled)
             and not (self.worker and self.worker.isRunning())
         )
 
@@ -2822,8 +2832,8 @@ Message: {str(e)}
             self.ui.label_calls.clear()
         request = QtNetwork.QNetworkRequest(QtCore.QUrl(SUBSCRIPTION_USAGE_ENDPOINT))
         request.setRawHeader(b"Authorization", f"Bearer {self._id_token}".encode("ascii"))
-        request.setAttribute(QtNetwork.QNetworkRequest.RedirectPolicyAttribute,
-                             QtNetwork.QNetworkRequest.ManualRedirectPolicy)
+        request.setAttribute(QtNetwork.QNetworkRequest.Attribute.RedirectPolicyAttribute,
+                             QtNetwork.QNetworkRequest.RedirectPolicy.ManualRedirectPolicy)
         reply = self._usage_network.get(request)
         self._usage_reply = reply
         timeout = QTimer(reply)
@@ -2846,13 +2856,13 @@ Message: {str(e)}
             return
 
         self.ui.btn_usage_refresh.setEnabled(True)
-        status = reply.attribute(QtNetwork.QNetworkRequest.HttpStatusCodeAttribute)
+        status = reply.attribute(QtNetwork.QNetworkRequest.Attribute.HttpStatusCodeAttribute)
         message = self.tr("Could not load subscription. Try refreshing.")
         self.ui.label_calls.clear()
         is_pro = False
         if status == 401:
             message = self.tr("Your Google session expired. Sign out and sign in again.")
-        elif status == 200 and reply.error() == QtNetwork.QNetworkReply.NoError:
+        elif status == 200 and reply.error() == QtNetwork.QNetworkReply.NetworkError.NoError:
             try:
                 usage = json.loads(bytes(reply.readAll()))
                 if usage["status"] == "active":
@@ -2888,7 +2898,7 @@ Message: {str(e)}
 
     def _submit_query(self, *, codex_instruction=None):
         if not self.ui:
-            self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.Critical)
+            self.iface.messageBar().pushMessage("Error", "UI not initialized.", level=Qgis.MessageLevel.Critical)
             return False
 
         from_codex = codex_instruction is not None
@@ -2953,7 +2963,7 @@ Message: {str(e)}
                     "model": model_name,
                     "phase": "user_query",
                     "plugin_version": f"QueryGIS-Plugin/{CURRENT_VERSION}",
-                    "qgis_version": Qgis.QGIS_VERSION,
+                    **_runtime_metadata(),
                     "os": os.name,
                     "run_id": self._current_run_id,
                     "attempt": self._request_attempt,

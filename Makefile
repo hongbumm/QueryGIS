@@ -90,6 +90,7 @@ compile: $(COMPILED_RESOURCE_FILES)
 
 %.py : %.qrc $(RESOURCES_SRC)
 	pyrcc5 -o $*.py  $<
+	python -c 'from pathlib import Path; path = Path("$@"); path.write_bytes(path.read_bytes().replace(b"from PyQt5 import QtCore", b"from qgis.PyQt import QtCore"))'
 
 %.qm : %.ts
 	$(LRELEASE) $<

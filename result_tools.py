@@ -15,15 +15,15 @@ class ChartZoomView(QtWidgets.QGraphicsView):
         scene.addWidget(chart)
         scene.setSceneRect(QtCore.QRectF(chart.rect()))
         self.setScene(scene)
-        self.setDragMode(QtWidgets.QGraphicsView.ScrollHandDrag)
-        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
-        self.setRenderHint(QtGui.QPainter.Antialiasing)
+        self.setDragMode(QtWidgets.QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         self.setAccessibleName(_("DockWidget", "Zoomable chart"))
         self._zoom_level = 0
 
     def fit_chart(self):
         self.resetTransform()
-        self.fitInView(self.sceneRect(), QtCore.Qt.KeepAspectRatio)
+        self.fitInView(self.sceneRect(), QtCore.Qt.AspectRatioMode.KeepAspectRatio)
         self._zoom_level = 0
 
     def zoom(self, steps):
@@ -60,13 +60,13 @@ def open_chart_preview(parent, title, chart):
     layout.addLayout(controls)
     layout.addWidget(view)
     QtCore.QTimer.singleShot(0, view.fit_chart)
-    dialog.exec_()
+    dialog.exec()
 
 
 def _chart_image(chart):
-    image = QtGui.QImage(chart.size() * 2, QtGui.QImage.Format_ARGB32_Premultiplied)
+    image = QtGui.QImage(chart.size() * 2, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
     image.setDevicePixelRatio(2)
-    image.fill(QtCore.Qt.transparent)
+    image.fill(QtCore.Qt.GlobalColor.transparent)
     chart.render(image)
     return image
 
@@ -74,7 +74,7 @@ def _chart_image(chart):
 def save_chart(path, chart):
     path = Path(path)
     output = QtCore.QSaveFile(str(path))
-    if not output.open(QtCore.QIODevice.WriteOnly):
+    if not output.open(QtCore.QIODevice.OpenModeFlag.WriteOnly):
         raise OSError(output.errorString())
     if path.suffix.lower() == ".svg":
         from qgis.PyQt.QtSvg import QSvgGenerator
@@ -99,12 +99,12 @@ def save_chart(path, chart):
 def _report_document(result, chart, printer):
     document = QtGui.QTextDocument()
     document.setDocumentMargin(4)
-    page_size = printer.pageRect(printer.DevicePixel).size()
+    page_size = printer.pageLayout().paintRectPixels(printer.resolution()).size()
     document.setPageSize(QtCore.QSizeF(page_size))
     parts = [f"<h1>{escape(result.title)}</h1>"]
     if chart is not None:
         resource = QtCore.QUrl("querygis:result-chart")
-        document.addResource(QtGui.QTextDocument.ImageResource, resource, _chart_image(chart))
+        document.addResource(QtGui.QTextDocument.ResourceType.ImageResource, resource, _chart_image(chart))
         width = min(chart.width(), max(1, int(page_size.width() - 2 * document.documentMargin())))
         parts.append(f'<p><img src="{resource.toString()}" width="{width}"></p>')
     if result.show_table:
@@ -120,27 +120,36 @@ def _report_document(result, chart, printer):
     return document
 
 
+def _report_printer():
+    from qgis.PyQt.QtPrintSupport import QPrinter
+
+    printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
+    layout = printer.pageLayout()
+    layout.setUnits(QtGui.QPageLayout.Unit.Millimeter)
+    layout.setMargins(QtCore.QMarginsF(18, 18, 18, 18))
+    printer.setPageLayout(layout)
+    return printer
+
+
 def save_report(path, result, chart):
     from qgis.PyQt.QtPrintSupport import QPrinter
 
     path = Path(path)
-    printer = QPrinter(QPrinter.ScreenResolution)
-    printer.setOutputFormat(QPrinter.PdfFormat)
-    printer.setPageMargins(18, 18, 18, 18, QPrinter.Millimeter)
+    printer = _report_printer()
+    printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
     with TemporaryDirectory(dir=path.parent) as directory:
         temporary_path = Path(directory) / "result.pdf"
         printer.setOutputFileName(str(temporary_path))
-        _report_document(result, chart, printer).print_(printer)
+        _report_document(result, chart, printer).print(printer)
         if not temporary_path.is_file() or not temporary_path.stat().st_size:
             raise OSError(_("DockWidget", "Could not write the PDF report."))
         temporary_path.replace(path)
 
 
 def preview_report(parent, result, chart):
-    from qgis.PyQt.QtPrintSupport import QPrintPreviewDialog, QPrinter
+    from qgis.PyQt.QtPrintSupport import QPrintPreviewDialog
 
-    printer = QPrinter(QPrinter.ScreenResolution)
-    printer.setPageMargins(18, 18, 18, 18, QPrinter.Millimeter)
+    printer = _report_printer()
     dialog = QPrintPreviewDialog(printer, parent)
-    dialog.paintRequested.connect(lambda device: _report_document(result, chart, device).print_(device))
-    dialog.exec_()
+    dialog.paintRequested.connect(lambda device: _report_document(result, chart, device).print(device))
+    dialog.exec()

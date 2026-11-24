@@ -13,7 +13,7 @@ from .result_tools import open_chart_preview, preview_report, save_chart, save_r
 QsciLexerPython = QsciScintilla = None
 if QtCore.QT_VERSION_STR.startswith("5."):
     try:
-        from PyQt5.Qsci import QsciLexerPython, QsciScintilla
+        from qgis.PyQt.Qsci import QsciLexerPython, QsciScintilla
     except ImportError:
         pass
 
@@ -71,7 +71,7 @@ class ResultCardData:
         if isinstance(value, QtCore.QVariant):
             value = None if value.isNull() else value.value()
         if isinstance(value, (QtCore.QDate, QtCore.QDateTime, QtCore.QTime)):
-            return value.toString(QtCore.Qt.ISODate)
+            return value.toString(QtCore.Qt.DateFormat.ISODate)
         if value is None or isinstance(value, (str, int, float)):
             return value
         return str(value)
@@ -106,28 +106,29 @@ class _ResultTableModel(QtCore.QAbstractTableModel):
     def columnCount(self, parent=QtCore.QModelIndex()):
         return 0 if parent.isValid() else len(self.result.columns)
 
-    def headerData(self, section, orientation, role=QtCore.Qt.DisplayRole):
-        if (orientation == QtCore.Qt.Horizontal and 0 <= section < len(self.result.columns)
-                and role in (QtCore.Qt.DisplayRole, QtCore.Qt.ToolTipRole)):
+    def headerData(self, section, orientation, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if (orientation == QtCore.Qt.Orientation.Horizontal and 0 <= section < len(self.result.columns)
+                and role in (QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.ToolTipRole)):
             return self.result.columns[section]
         return None
 
-    def data(self, index, role=QtCore.Qt.DisplayRole):
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
         value = self.result.rows[index.row()][index.column()]
-        if role in (QtCore.Qt.DisplayRole, QtCore.Qt.ToolTipRole):
+        if role in (QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.ToolTipRole):
             return "" if value is None else str(value)
-        if role == QtCore.Qt.UserRole:
+        if role == QtCore.Qt.ItemDataRole.UserRole:
             return value
-        if role == QtCore.Qt.TextAlignmentRole and isinstance(value, (int, float)):
-            return int(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        if role == QtCore.Qt.ItemDataRole.TextAlignmentRole and isinstance(value, (int, float)):
+            alignment = QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+            return int(getattr(alignment, "value", alignment))
         return None
 
 
 class _ResultTableFilter(QtCore.QSortFilterProxyModel):
     def lessThan(self, left, right):
-        return self._sort_key(left.data(QtCore.Qt.UserRole)) < self._sort_key(right.data(QtCore.Qt.UserRole))
+        return self._sort_key(left.data(QtCore.Qt.ItemDataRole.UserRole)) < self._sort_key(right.data(QtCore.Qt.ItemDataRole.UserRole))
 
     @staticmethod
     def _sort_key(value):
@@ -154,7 +155,7 @@ class _ResultBar(QtWidgets.QWidget):
         width = abs(self.end - self.zero) * self.width()
         if width:
             painter.fillRect(QtCore.QRectF(start, 0, width, self.height()), palette.highlight())
-        painter.setPen(palette.color(QtGui.QPalette.Text))
+        painter.setPen(palette.color(QtGui.QPalette.ColorRole.Text))
         x = min(self.width() - 1, round(self.zero * self.width()))
         painter.drawLine(x, 0, x, self.height())
 
@@ -206,12 +207,12 @@ class _ResultPlot(QtWidgets.QWidget):
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         palette = self.palette()
-        text = palette.color(QtGui.QPalette.Text)
+        text = palette.color(QtGui.QPalette.ColorRole.Text)
         grid = QtGui.QColor(text)
         grid.setAlpha(44)
-        fill = palette.color(QtGui.QPalette.Highlight)
+        fill = palette.color(QtGui.QPalette.ColorRole.Highlight)
         metrics = painter.fontMetrics()
         labels = self._axis_labels(self.y_axis)
         label_width = max(metrics.horizontalAdvance(label) for label in labels)
@@ -231,7 +232,7 @@ class _ResultPlot(QtWidgets.QWidget):
             painter.setPen(text)
             painter.drawLine(QtCore.QLineF(left - 4, y, left, y))
             painter.drawText(QtCore.QRectF(0, y - top, label_width, metrics.height()),
-                             QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, label)
+                             QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter, label)
 
         painter.setPen(text)
         painter.drawLine(self._plot_rect.topLeft(), self._plot_rect.bottomLeft())
@@ -241,12 +242,12 @@ class _ResultPlot(QtWidgets.QWidget):
                 x = left + step * width / 4
                 cell_width = min(92, width / 4)
                 cell_left = max(left, min(x - cell_width / 2, left + width - cell_width))
-                alignment = (QtCore.Qt.AlignLeft if step == 0 else
-                             QtCore.Qt.AlignRight if step == 4 else QtCore.Qt.AlignHCenter)
+                alignment = (QtCore.Qt.AlignmentFlag.AlignLeft if step == 0 else
+                             QtCore.Qt.AlignmentFlag.AlignRight if step == 4 else QtCore.Qt.AlignmentFlag.AlignHCenter)
                 painter.drawLine(QtCore.QLineF(x, bottom, x, bottom + 4))
-                label = metrics.elidedText(label, QtCore.Qt.ElideRight, int(cell_width))
+                label = metrics.elidedText(label, QtCore.Qt.TextElideMode.ElideRight, int(cell_width))
                 painter.drawText(QtCore.QRectF(cell_left, bottom + 6, cell_width, metrics.height()),
-                                 alignment | QtCore.Qt.AlignVCenter, label)
+                                 alignment | QtCore.Qt.AlignmentFlag.AlignVCenter, label)
 
         y_scale, y_min, y_max = self.y_axis
         slot = width / len(self.rows)
@@ -261,7 +262,7 @@ class _ResultPlot(QtWidgets.QWidget):
                 cell_width = min(slot * label_step, 2 * min(x, self.width() - x))
                 painter.drawLine(QtCore.QLineF(x, bottom, x, bottom + 4))
                 painter.drawText(QtCore.QRectF(x - cell_width / 2 + 2, bottom + 6, max(1, cell_width - 4), label_height),
-                                 QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop | QtCore.Qt.TextWordWrap,
+                                 QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.TextFlag.TextWordWrap,
                                  "" if label is None else str(label))
             if number is None:
                 connected = False
@@ -287,7 +288,7 @@ class _ResultPlot(QtWidgets.QWidget):
 
         painter.setPen(QtGui.QPen(fill, 2))
         painter.drawPath(path)
-        painter.setPen(QtCore.Qt.NoPen)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
         painter.setBrush(fill)
         for bar in bars:
             painter.drawRect(bar)
@@ -297,22 +298,23 @@ class _ResultPlot(QtWidgets.QWidget):
             self._scatter_points = markers
 
     def mouseMoveEvent(self, event):
-        if not self._plot_rect.contains(QtCore.QPointF(event.pos())):
+        position = event.position() if hasattr(event, "position") else event.localPos()
+        if not self._plot_rect.contains(position):
             QtWidgets.QToolTip.hideText()
             return
         if self.x_axis:
-            position = QtCore.QPointF(event.pos())
             index, point = min(enumerate(self._scatter_points), key=lambda item: (item[1] - position).manhattanLength())
             if (point - position).manhattanLength() > 14:
                 QtWidgets.QToolTip.hideText()
                 return
         else:
-            fraction = (event.pos().x() - self._plot_rect.left()) / self._plot_rect.width()
+            fraction = (position.x() - self._plot_rect.left()) / self._plot_rect.width()
             index = min(len(self.rows) - 1, int(fraction * len(self.rows)))
         label, value, _number = self.rows[index]
         value_text = str(value) if value is not None else _("DockWidget", "No value")
         label_text = "" if label is None else str(label)
-        QtWidgets.QToolTip.showText(event.globalPos(), f"<qt>{escape(label_text)} · {escape(value_text)}</qt>", self)
+        global_position = event.globalPosition() if hasattr(event, "globalPosition") else event.screenPos()
+        QtWidgets.QToolTip.showText(global_position.toPoint(), f"<qt>{escape(label_text)} · {escape(value_text)}</qt>", self)
 
 STARTER_PROMPTS = (
     ("Create an RGB composite",
@@ -373,7 +375,7 @@ class _DockSurface(QtWidgets.QWidget):
         if self._border is None:
             painter.fillRect(event.rect(), self._background)
         else:
-            painter.setRenderHint(QtGui.QPainter.Antialiasing)
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
             painter.setBrush(self._background)
             painter.setPen(self._border)
             painter.drawRoundedRect(QtCore.QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12)
@@ -386,7 +388,7 @@ class _QuestionInput(QtWidgets.QPlainTextEdit):
 
     def __init__(self):
         super().__init__()
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._fit_timer = QtCore.QTimer(self)
         self._fit_timer.setSingleShot(True)
         self._fit_timer.timeout.connect(self._fit_height)
@@ -426,7 +428,7 @@ class _QuestionInput(QtWidgets.QPlainTextEdit):
             block = block.next()
 
         needs_scroll = len(line_heights) > self.MAX_VISIBLE_LINES
-        scroll_policy = QtCore.Qt.ScrollBarAsNeeded if needs_scroll else QtCore.Qt.ScrollBarAlwaysOff
+        scroll_policy = QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded if needs_scroll else QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         if self.verticalScrollBarPolicy() != scroll_policy:
             self.setVerticalScrollBarPolicy(scroll_policy)
         padding = self.height() - self.viewport().height() + 2 * margin
@@ -450,13 +452,13 @@ class _ReplyText(QtWidgets.QTextEdit):
         self._resize_timer.setSingleShot(True)
         self._resize_timer.timeout.connect(self._fit_height)
         self.setObjectName("resultMessage")
-        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Fixed)
         self.setReadOnly(True)
         self.setTabChangesFocus(True)
         self.setAcceptRichText(False)
-        self.setWordWrapMode(QtGui.QTextOption.WordWrap)
-        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
-        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.setWordWrapMode(QtGui.QTextOption.WrapMode.WordWrap)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.document().documentLayout().documentSizeChanged.connect(self._schedule_resize)
         self.horizontalScrollBar().rangeChanged.connect(self._schedule_resize)
@@ -465,7 +467,7 @@ class _ReplyText(QtWidgets.QTextEdit):
         self._schedule_resize()
 
     def eventFilter(self, obj, event):
-        if obj is self._chat_viewport and event.type() == QtCore.QEvent.Resize:
+        if obj is self._chat_viewport and event.type() == QtCore.QEvent.Type.Resize:
             self._schedule_resize()
         return super().eventFilter(obj, event)
 
@@ -496,15 +498,15 @@ class _LitePlanNotice(QtWidgets.QFrame):
         layout.setSpacing(8)
 
         label = QtWidgets.QLabel(message)
-        label.setTextFormat(QtCore.Qt.PlainText)
+        label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         label.setWordWrap(True)
         layout.addWidget(label)
 
         subscribe = QtWidgets.QPushButton(_("DockWidget", "Subscribe"))
         subscribe.setObjectName("askButton")
-        subscribe.setCursor(QtCore.Qt.PointingHandCursor)
+        subscribe.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         subscribe.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(PRICING_URL)))
-        layout.addWidget(subscribe, 0, QtCore.Qt.AlignLeft)
+        layout.addWidget(subscribe, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
         self.ensurePolished()
         margins = parent.layout().contentsMargins()
         width = parent.width() - margins.left() - margins.right()
@@ -513,7 +515,7 @@ class _LitePlanNotice(QtWidgets.QFrame):
 
     def event(self, event):
         handled = super().event(event)
-        if event.type() in (QtCore.QEvent.LayoutRequest, QtCore.QEvent.Resize) and self.layout() is not None:
+        if event.type() in (QtCore.QEvent.Type.LayoutRequest, QtCore.QEvent.Type.Resize) and self.layout() is not None:
             self._fit_height()
         return handled
 
@@ -525,14 +527,14 @@ class _LitePlanNotice(QtWidgets.QFrame):
 
 class _DockSplitterHandle(QtWidgets.QSplitterHandle):
     def paintEvent(self, event):
-        pen = QtGui.QPen(self.palette().color(QtGui.QPalette.WindowText))
+        pen = QtGui.QPen(self.palette().color(QtGui.QPalette.ColorRole.WindowText))
         color = pen.color()
         color.setAlpha(85)
         pen.setColor(color)
         pen.setWidthF(2.5)
-        pen.setCapStyle(QtCore.Qt.RoundCap)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(pen)
         x, y = self.width() / 2, self.height() / 2
         painter.drawLine(QtCore.QPointF(x - 15, y), QtCore.QPointF(x + 15, y))
@@ -570,14 +572,14 @@ class Ui_DockWidget:
         self.btn_settings = QtWidgets.QToolButton()
         self.btn_settings.setObjectName("settingsButton")
         self.btn_settings.setText(_("DockWidget", "Settings"))
-        self.btn_settings.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        self.btn_settings.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.btn_settings.setIcon(self._settings_icon())
         self.btn_settings.setIconSize(QtCore.QSize(20, 20))
         self.btn_settings.setAccessibleName(self.btn_settings.text())
         self.btn_settings.setToolTip(self.btn_settings.text())
         self.btn_settings.setCheckable(True)
         self.btn_settings.setAutoRaise(True)
-        self.btn_settings.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_settings.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         header.addWidget(self.btn_settings)
         root.addLayout(header)
 
@@ -586,11 +588,11 @@ class Ui_DockWidget:
 
         body = QtWidgets.QWidget()
         self._stack = QtWidgets.QStackedLayout(body)
-        self._stack.setStackingMode(QtWidgets.QStackedLayout.StackAll)
+        self._stack.setStackingMode(QtWidgets.QStackedLayout.StackingMode.StackAll)
         root.addWidget(body, 1)
         self.workspace = QtWidgets.QWidget()
         self.workspace.setObjectName("querygisWorkspace")
-        self.workspace.setAttribute(QtCore.Qt.WA_StyledBackground)
+        self.workspace.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
         self._stack.addWidget(self.workspace)
         main = QtWidgets.QVBoxLayout(self.workspace)
         main.setContentsMargins(0, 0, 0, 0)
@@ -598,11 +600,11 @@ class Ui_DockWidget:
 
         self.chatScrollArea = QtWidgets.QScrollArea()
         self.chatScrollArea.setObjectName("conversation")
-        self.chatScrollArea.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.chatScrollArea.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.chatScrollArea.viewport().setObjectName("conversationViewport")
-        self.chatScrollArea.viewport().setAttribute(QtCore.Qt.WA_StyledBackground)
+        self.chatScrollArea.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
         self.chatScrollArea.setWidgetResizable(True)
-        self.chatScrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.chatScrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         chat_scrollbar = self.chatScrollArea.verticalScrollBar()
         self._chat_scroll_maximum = chat_scrollbar.maximum()
         self._chat_follow_position = chat_scrollbar.value()
@@ -629,11 +631,11 @@ class Ui_DockWidget:
         layers_layout.addWidget(self.label_layers)
         self.layer_scroll = layer_scroll = QtWidgets.QScrollArea()
         layer_scroll.setObjectName("layerList")
-        layer_scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        layer_scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         layer_scroll.viewport().setObjectName("layerViewport")
-        layer_scroll.viewport().setAttribute(QtCore.Qt.WA_StyledBackground)
+        layer_scroll.viewport().setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground)
         layer_scroll.setWidgetResizable(True)
-        layer_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        layer_scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.layer_surface = _DockSurface()
         self.layerListLayout = QtWidgets.QVBoxLayout(self.layer_surface)
         self.layerListLayout.setContentsMargins(0, 1, 0, 1)
@@ -643,13 +645,13 @@ class Ui_DockWidget:
         layers_layout.addWidget(layer_scroll)
         self.empty_layers = QtWidgets.QLabel(_("DockWidget", "Please select layers to operate on"))
         self.empty_layers.setObjectName("emptyLayers")
-        self.empty_layers.setAlignment(QtCore.Qt.AlignCenter)
+        self.empty_layers.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.empty_layers.setWordWrap(True)
-        self.empty_layers.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
-        self.empty_layers.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents)
+        self.empty_layers.setSizePolicy(QtWidgets.QSizePolicy.Policy.Ignored, QtWidgets.QSizePolicy.Policy.Ignored)
+        self.empty_layers.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layers_card_layout.addWidget(self.empty_layers, 0, 0)
         self.empty_layers.raise_()
-        self.content_splitter = _DockSplitter(QtCore.Qt.Vertical)
+        self.content_splitter = _DockSplitter(QtCore.Qt.Orientation.Vertical)
         self.content_splitter.setObjectName("contentSplitter")
         self.content_splitter.setChildrenCollapsible(False)
         self.content_splitter.setHandleWidth(12)
@@ -676,12 +678,12 @@ class Ui_DockWidget:
         composer_footer.setContentsMargins(9, 0, 0, 0)
         shortcut_hint = QtWidgets.QLabel(shortcut_text)
         shortcut_hint.setObjectName("shortcutHint")
-        composer_footer.addWidget(shortcut_hint, 1, QtCore.Qt.AlignVCenter)
+        composer_footer.addWidget(shortcut_hint, 1, QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.btn_ask = QtWidgets.QPushButton(_("DockWidget", "Ask"))
         self.btn_ask.setObjectName("askButton")
         self.btn_ask.setToolTip(_("DockWidget", "Ask and automatically run the analysis (Ctrl+Enter)"))
-        self.btn_ask.setCursor(QtCore.Qt.PointingHandCursor)
-        composer_footer.addWidget(self.btn_ask, 0, QtCore.Qt.AlignVCenter)
+        self.btn_ask.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        composer_footer.addWidget(self.btn_ask, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         composer.addLayout(composer_footer)
         main.addWidget(composer_panel)
 
@@ -697,9 +699,9 @@ class Ui_DockWidget:
         main.addWidget(self.etaLabel)
         self.status_label = QtWidgets.QLabel(_("DockWidget", "Status: Ready"))
         self.status_label.setObjectName("statusLabel")
-        self.status_label.setTextFormat(QtCore.Qt.PlainText)
+        self.status_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         self.status_label.setWordWrap(True)
-        self.status_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.status_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         main.addWidget(self.status_label)
         self._build_auth_overlay()
         self.set_font_size(font_size)
@@ -728,7 +730,7 @@ class Ui_DockWidget:
     def _settings_icon(self):
         pixmap = QtGui.QPixmap(48, 48)
         pixmap.setDevicePixelRatio(2)
-        pixmap.fill(QtCore.Qt.transparent)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
         points = (
             (10, 2), (14, 2), (15, 5), (17, 6), (20, 5), (22, 9),
             (20, 11), (20, 13), (22, 15), (20, 19), (17, 18), (15, 19),
@@ -736,25 +738,25 @@ class Ui_DockWidget:
             (4, 13), (4, 11), (2, 9), (4, 5), (7, 6), (9, 5),
         )
         gear = QtGui.QPainterPath()
-        gear.setFillRule(QtCore.Qt.OddEvenFill)
+        gear.setFillRule(QtCore.Qt.FillRule.OddEvenFill)
         gear.addPolygon(QtGui.QPolygonF([QtCore.QPointF(x, y) for x, y in points]))
         gear.closeSubpath()
         gear.addEllipse(QtCore.QPointF(12, 12), 3.5, 3.5)
         painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.fillPath(gear, self.dockWidgetContents.palette().color(QtGui.QPalette.WindowText))
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.fillPath(gear, self.dockWidgetContents.palette().color(QtGui.QPalette.ColorRole.WindowText))
         painter.end()
         return QtGui.QIcon(pixmap)
 
     def _close_icon(self):
         pixmap = QtGui.QPixmap(36, 36)
         pixmap.setDevicePixelRatio(2)
-        pixmap.fill(QtCore.Qt.transparent)
-        pen = QtGui.QPen(self.dockWidgetContents.palette().color(QtGui.QPalette.WindowText))
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+        pen = QtGui.QPen(self.dockWidgetContents.palette().color(QtGui.QPalette.ColorRole.WindowText))
         pen.setWidthF(1.8)
-        pen.setCapStyle(QtCore.Qt.RoundCap)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(pen)
         painter.drawLine(QtCore.QPointF(4.5, 4.5), QtCore.QPointF(13.5, 13.5))
         painter.drawLine(QtCore.QPointF(13.5, 4.5), QtCore.QPointF(4.5, 13.5))
@@ -764,13 +766,13 @@ class Ui_DockWidget:
     def _refresh_icon(self, color):
         pixmap = QtGui.QPixmap(40, 40)
         pixmap.setDevicePixelRatio(2)
-        pixmap.fill(QtCore.Qt.transparent)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
         pen = QtGui.QPen(QtGui.QColor(color))
         pen.setWidthF(1.7)
-        pen.setCapStyle(QtCore.Qt.RoundCap)
-        pen.setJoinStyle(QtCore.Qt.RoundJoin)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
         painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(pen)
         painter.drawArc(QtCore.QRectF(3.5, 3.5, 13, 13), 30 * 16, 285 * 16)
         painter.drawPolyline(QtGui.QPolygonF([
@@ -782,12 +784,12 @@ class Ui_DockWidget:
     def _copy_icon(self, color):
         pixmap = QtGui.QPixmap(36, 36)
         pixmap.setDevicePixelRatio(2)
-        pixmap.fill(QtCore.Qt.transparent)
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
         pen = QtGui.QPen(QtGui.QColor(color))
         pen.setWidthF(1.5)
-        pen.setCapStyle(QtCore.Qt.RoundCap)
+        pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
         painter = QtGui.QPainter(pixmap)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(pen)
         back = QtGui.QPainterPath(QtCore.QPointF(3, 11.5))
         back.lineTo(3, 4)
@@ -805,7 +807,7 @@ class Ui_DockWidget:
         layout.setSpacing(8)
         layout.addStretch()
         self.starter_title = QtWidgets.QLabel(_("DockWidget", "What would you like to do in QGIS?"))
-        self.starter_title.setAlignment(QtCore.Qt.AlignCenter)
+        self.starter_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.starter_title.setWordWrap(True)
         layout.addWidget(self.starter_title)
         layout.addSpacing(4)
@@ -813,14 +815,14 @@ class Ui_DockWidget:
         for _index in range(3):
             button = QtWidgets.QPushButton()
             button.setObjectName("starterPrompt")
-            button.setCursor(QtCore.Qt.PointingHandCursor)
+            button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda checked=False, widget=button: self._prefill_query(widget.property("promptText")))
-            layout.addWidget(button, alignment=QtCore.Qt.AlignHCenter)
+            layout.addWidget(button, alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
             self.starter_buttons.append(button)
         self.btn_more_prompts = QtWidgets.QPushButton(_("DockWidget", "what else?"))
-        self.btn_more_prompts.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_more_prompts.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_more_prompts.clicked.connect(self._shuffle_starter_prompts)
-        layout.addWidget(self.btn_more_prompts, alignment=QtCore.Qt.AlignHCenter)
+        layout.addWidget(self.btn_more_prompts, alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
         self._shuffle_starter_prompts()
         layout.addStretch()
         return panel
@@ -858,7 +860,7 @@ class Ui_DockWidget:
 
     def _prefill_query(self, text):
         self.text_query.setPlainText(text)
-        self.text_query.moveCursor(QtGui.QTextCursor.End)
+        self.text_query.moveCursor(QtGui.QTextCursor.MoveOperation.End)
         self.text_query.setFocus()
 
     def _apply_font(self):
@@ -876,7 +878,7 @@ class Ui_DockWidget:
         if self._pretendard_family:
             font = self.dockWidgetContents.font()
             font.setFamily(self._pretendard_family)
-            font.setStyleStrategy(QtGui.QFont.PreferAntialias)
+            font.setStyleStrategy(QtGui.QFont.StyleStrategy.PreferAntialias)
             self.dockWidgetContents.setFont(font)
 
     def set_font_size(self, size):
@@ -922,14 +924,14 @@ class Ui_DockWidget:
         button.setObjectName("googleButton")
         button.setIcon(self.google_icon)
         button.setIconSize(QtCore.QSize(18, 18))
-        button.setCursor(QtCore.Qt.PointingHandCursor)
+        button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         return button
 
     def _build_key_entry(self, name):
         row = QtWidgets.QHBoxLayout()
         field = QtWidgets.QLineEdit()
         field.setPlaceholderText(_("DockWidget", "Paste your API key"))
-        field.setEchoMode(QtWidgets.QLineEdit.Password)
+        field.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         field.setAccessibleName(name)
         row.addWidget(field, 1)
         button = QtWidgets.QPushButton(_("DockWidget", "Save"))
@@ -950,7 +952,7 @@ class Ui_DockWidget:
         label = QtWidgets.QLabel()
         label.setObjectName("mutedLabel")
         label.setWordWrap(True)
-        label.setTextFormat(QtCore.Qt.PlainText)
+        label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         label.hide()
         return label
 
@@ -974,9 +976,9 @@ class Ui_DockWidget:
         self.btn_close_settings.setFixedSize(30, 30)
         self.btn_close_settings.setToolTip(_("DockWidget", "Close settings"))
         self.btn_close_settings.setAccessibleName(self.btn_close_settings.toolTip())
-        self.btn_close_settings.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_close_settings.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_close_settings.clicked.connect(lambda: self.btn_settings.setChecked(False))
-        heading.addWidget(self.btn_close_settings, 0, QtCore.Qt.AlignTop)
+        heading.addWidget(self.btn_close_settings, 0, QtCore.Qt.AlignmentFlag.AlignTop)
         content.addLayout(heading)
         self.font_controls = QtWidgets.QWidget()
         font_row = QtWidgets.QHBoxLayout(self.font_controls)
@@ -988,7 +990,7 @@ class Ui_DockWidget:
         for size, points in FONT_SIZES.items():
             button = QtWidgets.QPushButton(size)
             button.setCheckable(True)
-            button.setCursor(QtCore.Qt.PointingHandCursor)
+            button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             button.setAccessibleName(_("DockWidget", "Font size %1").replace("%1", size))
             self.font_sizes.addButton(button, points)
             font_row.addWidget(button)
@@ -1010,7 +1012,7 @@ class Ui_DockWidget:
 
         self.label_welcome_user = QtWidgets.QLabel()
         self.label_welcome_user.setObjectName("mutedLabel")
-        self.label_welcome_user.setTextFormat(QtCore.Qt.PlainText)
+        self.label_welcome_user.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         self.label_welcome_user.setWordWrap(True)
         self.label_welcome_user.hide()
         content.addWidget(self.label_welcome_user)
@@ -1025,7 +1027,7 @@ class Ui_DockWidget:
         self.label_calls = QtWidgets.QLabel()
         self.label_calls.setObjectName("mutedLabel")
         for label in (self.label_plan, self.label_calls):
-            label.setTextFormat(QtCore.Qt.PlainText)
+            label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
             label.setWordWrap(True)
             subscription_text.addWidget(label)
         subscription_row.addLayout(subscription_text, 1)
@@ -1034,10 +1036,10 @@ class Ui_DockWidget:
         self.btn_usage_refresh.setText(_("DockWidget", "Refresh usage"))
         self.btn_usage_refresh.setAccessibleName(self.btn_usage_refresh.text())
         self.btn_usage_refresh.setToolTip(self.btn_usage_refresh.text())
-        self.btn_usage_refresh.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        self.btn_usage_refresh.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.btn_usage_refresh.setIconSize(QtCore.QSize(18, 18))
-        self.btn_usage_refresh.setCursor(QtCore.Qt.PointingHandCursor)
-        subscription_row.addWidget(self.btn_usage_refresh, alignment=QtCore.Qt.AlignTop)
+        self.btn_usage_refresh.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        subscription_row.addWidget(self.btn_usage_refresh, alignment=QtCore.Qt.AlignmentFlag.AlignTop)
         self.subscription_panel.hide()
         content.addWidget(self.subscription_panel)
 
@@ -1053,10 +1055,10 @@ class Ui_DockWidget:
         codex_layout.addWidget(self.btn_codex)
         codex_help = QtWidgets.QPushButton(_("DockWidget", "How to connect with Codex?"))
         codex_help.setObjectName("codexHelpLink")
-        codex_help.setCursor(QtCore.Qt.PointingHandCursor)
+        codex_help.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         codex_help.setToolTip(_("DockWidget", "Open the QueryGIS setup guide on GitHub"))
         codex_help.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(CODEX_GUIDE_URL)))
-        codex_layout.addWidget(codex_help, 0, QtCore.Qt.AlignLeft)
+        codex_layout.addWidget(codex_help, 0, QtCore.Qt.AlignmentFlag.AlignLeft)
         self.codex_status = self._auth_message_label()
         codex_layout.addWidget(self.codex_status)
         self.set_codex_connection(False)
@@ -1072,7 +1074,7 @@ class Ui_DockWidget:
         self.btn_codex.setToolTip(tooltip)
         self.btn_codex.setAccessibleDescription(tooltip)
         self.btn_codex.setEnabled(eligible)
-        self.btn_codex.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, not eligible)
+        self.btn_codex.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, not eligible)
         self._codex_blur.setEnabled(not eligible)
         self.btn_codex.setText(button_text or _("DockWidget", "Connect with Codex"))
         self.codex_status.setText(message)
@@ -1104,11 +1106,11 @@ class Ui_DockWidget:
         signup = QtWidgets.QLabel(_("DockWidget", "Sign up to get free QueryGIS credits!"))
         signup.setObjectName("panelTitle")
         signup.setWordWrap(True)
-        signup.setAlignment(QtCore.Qt.AlignCenter)
+        signup.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         content.addWidget(signup)
         self.btn_create_account = QtWidgets.QPushButton(_("DockWidget", "Create an account"))
         self.btn_create_account.setObjectName("askButton")
-        self.btn_create_account.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_create_account.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_create_account.clicked.connect(
             lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl("https://www.3dlabs-querygis.co.kr/"))
         )
@@ -1118,7 +1120,7 @@ class Ui_DockWidget:
         content.addSpacing(6)
 
         existing = QtWidgets.QLabel(_("DockWidget", "Already have an account?"))
-        existing.setAlignment(QtCore.Qt.AlignCenter)
+        existing.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         existing.setWordWrap(True)
         content.addWidget(existing)
         self.btn_connection_google = self._google_button()
@@ -1128,9 +1130,9 @@ class Ui_DockWidget:
         content.addSpacing(6)
         self.btn_enterprise_access = QtWidgets.QPushButton(_("DockWidget", "Education or enterprise customer?"))
         self.btn_enterprise_access.setObjectName("connectionLink")
-        self.btn_enterprise_access.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_enterprise_access.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_enterprise_access.clicked.connect(lambda: self._set_enterprise_page(True))
-        content.addWidget(self.btn_enterprise_access, alignment=QtCore.Qt.AlignHCenter)
+        content.addWidget(self.btn_enterprise_access, alignment=QtCore.Qt.AlignmentFlag.AlignHCenter)
         self.connection_status = self._auth_message_label()
         content.addWidget(self.connection_status)
 
@@ -1142,9 +1144,9 @@ class Ui_DockWidget:
         enterprise_layout.setSpacing(12)
         self.btn_connection_back = QtWidgets.QPushButton(_("DockWidget", "Back"))
         self.btn_connection_back.setObjectName("connectionLink")
-        self.btn_connection_back.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_connection_back.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_connection_back.clicked.connect(lambda: self._set_enterprise_page(False))
-        enterprise_layout.addWidget(self.btn_connection_back, alignment=QtCore.Qt.AlignLeft)
+        enterprise_layout.addWidget(self.btn_connection_back, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         title = QtWidgets.QLabel(_("DockWidget", "3DLabs QueryGIS API Key"))
         title.setObjectName("panelTitle")
         title.setWordWrap(True)
@@ -1182,7 +1184,7 @@ class Ui_DockWidget:
         success_layout.setSpacing(16)
         success_title = QtWidgets.QLabel(_("DockWidget", "Login Successful!"))
         success_title.setObjectName("panelTitle")
-        success_title.setAlignment(QtCore.Qt.AlignCenter)
+        success_title.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         success_title.setWordWrap(True)
         success_layout.addWidget(success_title)
 
@@ -1200,13 +1202,13 @@ class Ui_DockWidget:
             notice = QtWidgets.QLabel(message)
             notice.setObjectName("mutedLabel")
             notice.setWordWrap(True)
-            notices.addWidget(notice_icon, row, 0, QtCore.Qt.AlignTop | QtCore.Qt.AlignHCenter)
+            notices.addWidget(notice_icon, row, 0, QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignHCenter)
             notices.addWidget(notice, row, 1)
         success_layout.addLayout(notices)
 
         self.btn_start_querygis = QtWidgets.QPushButton(_("DockWidget", "Start QueryGIS"))
         self.btn_start_querygis.setObjectName("askButton")
-        self.btn_start_querygis.setCursor(QtCore.Qt.PointingHandCursor)
+        self.btn_start_querygis.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         success_layout.addWidget(self.btn_start_querygis)
         self.login_success_panel.hide()
         card_row.addWidget(self.login_success_panel, 12)
@@ -1263,7 +1265,7 @@ class Ui_DockWidget:
         layout = QtWidgets.QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
         if role == "assistant":
-            row.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+            row.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Fixed)
             layout.addWidget(self._code_review(message))
             return row
         if role == "assistant-result":
@@ -1275,8 +1277,8 @@ class Ui_DockWidget:
 
         label = QtWidgets.QLabel()
         label.setObjectName("userMessage")
-        label.setTextFormat(QtCore.Qt.PlainText)
-        label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
+        label.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         label.setWordWrap(True)
         label.setText(message)
         layout.addSpacing(18)
@@ -1295,17 +1297,17 @@ class Ui_DockWidget:
         heading = QtWidgets.QHBoxLayout()
         title = QtWidgets.QLabel(result.title)
         title.setObjectName("sectionLabel")
-        title.setTextFormat(QtCore.Qt.PlainText)
+        title.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         title.setWordWrap(True)
         heading.addWidget(title, 1)
         save = QtWidgets.QPushButton(_("DockWidget", "Save CSV"))
-        heading.addWidget(save, 0, QtCore.Qt.AlignTop)
+        heading.addWidget(save, 0, QtCore.Qt.AlignmentFlag.AlignTop)
         more = QtWidgets.QToolButton()
         more.setObjectName("resultMenuButton")
         more.setText(_("DockWidget", "More"))
-        more.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        more.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         more.setMenu(self._result_menu(more, card, result))
-        heading.addWidget(more, 0, QtCore.Qt.AlignTop)
+        heading.addWidget(more, 0, QtCore.Qt.AlignmentFlag.AlignTop)
         layout.addLayout(heading)
 
         views = []
@@ -1326,7 +1328,7 @@ class Ui_DockWidget:
             tabs.setObjectName("resultTabs")
             tabs.setExpanding(False)
             tabs.setDrawBase(False)
-            tabs.setElideMode(QtCore.Qt.ElideNone)
+            tabs.setElideMode(QtCore.Qt.TextElideMode.ElideNone)
             layout.addWidget(tabs)
 
         for label, widget, _is_chart in views:
@@ -1377,7 +1379,7 @@ class Ui_DockWidget:
         if include_title:
             title = QtWidgets.QLabel(result.title)
             title.setObjectName("sectionLabel")
-            title.setTextFormat(QtCore.Qt.PlainText)
+            title.setTextFormat(QtCore.Qt.TextFormat.PlainText)
             title.setWordWrap(True)
             layout.addWidget(title)
         layout.addWidget(self._result_chart(result))
@@ -1418,22 +1420,22 @@ class Ui_DockWidget:
         table.setAccessibleName(result.title)
         filtered = _ResultTableFilter(table)
         filtered.setSourceModel(_ResultTableModel(result, filtered))
-        filtered.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)
+        filtered.setFilterCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
         filtered.setFilterKeyColumn(-1)
         table.setModel(filtered)
-        table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setShowGrid(False)
         table.setWordWrap(False)
         table.verticalHeader().hide()
         header = table.horizontalHeader()
         header.setDefaultSectionSize(120)
         header.setStretchLastSection(True)
-        header.setTextElideMode(QtCore.Qt.ElideRight)
+        header.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
         if len(result.columns) <= 2:
-            header.setSectionResizeMode(QtWidgets.QHeaderView.Stretch)
+            header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
         table.setSortingEnabled(True)
-        table.sortByColumn(-1, QtCore.Qt.AscendingOrder)
+        table.sortByColumn(-1, QtCore.Qt.SortOrder.AscendingOrder)
         layout.addWidget(table)
         count = len(result.rows)
         info = QtWidgets.QLabel()
@@ -1470,7 +1472,7 @@ class Ui_DockWidget:
         layout.setSpacing(6)
         measure = QtWidgets.QLabel(result.chart_columns[1])
         measure.setObjectName("mutedLabel")
-        measure.setTextFormat(QtCore.Qt.PlainText)
+        measure.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         measure.setWordWrap(True)
         layout.addWidget(measure)
 
@@ -1482,9 +1484,9 @@ class Ui_DockWidget:
                 if result.chart_type == "scatter":
                     axis = QtWidgets.QLabel(result.chart_columns[0])
                     axis.setObjectName("mutedLabel")
-                    axis.setTextFormat(QtCore.Qt.PlainText)
+                    axis.setTextFormat(QtCore.Qt.TextFormat.PlainText)
                     axis.setWordWrap(True)
-                    layout.addWidget(axis, 0, QtCore.Qt.AlignHCenter)
+                    layout.addWidget(axis, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
             else:
                 layout.addWidget(QtWidgets.QLabel(_("DockWidget", "No numeric values to plot.")))
             return widget
@@ -1499,10 +1501,10 @@ class Ui_DockWidget:
         for name, value, number in preview:
             row = QtWidgets.QHBoxLayout()
             label = QtWidgets.QLabel("" if name is None else str(name))
-            label.setTextFormat(QtCore.Qt.PlainText)
+            label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
             label.setWordWrap(True)
             value_label = QtWidgets.QLabel(str(value))
-            value_label.setTextFormat(QtCore.Qt.PlainText)
+            value_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
             row.addWidget(label, 1)
             row.addWidget(value_label)
             layout.addLayout(row)
@@ -1538,8 +1540,8 @@ class Ui_DockWidget:
             if path.exists() and QtWidgets.QMessageBox.question(
                 parent, _("DockWidget", "Replace file?"),
                 _("DockWidget", "Replace the existing file {name}?").format(name=path.name),
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No
-            ) != QtWidgets.QMessageBox.Yes:
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No, QtWidgets.QMessageBox.StandardButton.No
+            ) != QtWidgets.QMessageBox.StandardButton.Yes:
                 return
         try:
             action(path)
@@ -1559,51 +1561,51 @@ class Ui_DockWidget:
         review = QtWidgets.QToolButton()
         review.setObjectName("reviewCodeButton")
         review.setText(_("DockWidget", "Review Code"))
-        review.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-        review.setArrowType(QtCore.Qt.RightArrow)
+        review.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        review.setArrowType(QtCore.Qt.ArrowType.RightArrow)
         review.setCheckable(True)
-        review.setCursor(QtCore.Qt.PointingHandCursor)
-        toolbar.addWidget(review, 0, QtCore.Qt.AlignVCenter)
+        review.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        toolbar.addWidget(review, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         toolbar.addStretch()
         copy = QtWidgets.QToolButton()
         copy.setObjectName("copyCodeButton")
-        copy.setToolButtonStyle(QtCore.Qt.ToolButtonIconOnly)
+        copy.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonIconOnly)
         copy.setAccessibleName(_("DockWidget", "Copy code"))
         copy.setToolTip(copy.accessibleName())
         copy.setIcon(self._copy_code_icon)
         copy.setIconSize(QtCore.QSize(18, 18))
         copy.setFixedSize(30, 30)
-        copy.setCursor(QtCore.Qt.PointingHandCursor)
+        copy.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         copy.clicked.connect(lambda: QtWidgets.QApplication.clipboard().setText(code))
         copy.hide()
-        toolbar.addWidget(copy, 0, QtCore.Qt.AlignVCenter)
+        toolbar.addWidget(copy, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addLayout(toolbar)
 
         if QsciScintilla is not None:
             editor = QsciScintilla()
             editor.setReadOnly(True)
             editor.setUtf8(True)
-            editor.setMarginType(0, QsciScintilla.NumberMargin)
+            editor.setMarginType(0, QsciScintilla.MarginType.NumberMargin)
             editor.setMarginLineNumbers(0, True)
             editor.setLexer(QsciLexerPython(editor))
             editor.setText(code)
         else:
             editor = QtWidgets.QPlainTextEdit()
             editor.setReadOnly(True)
-            editor.setLineWrapMode(QtWidgets.QPlainTextEdit.NoWrap)
+            editor.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
             editor.setPlainText(code)
         editor.setObjectName("codePreview")
         editor.setAccessibleName(_("DockWidget", "Generated Python code"))
         code_font = QtGui.QFont()
         code_font.setFamilies(["Consolas", "Menlo", "DejaVu Sans Mono", "monospace"])
-        code_font.setStyleHint(QtGui.QFont.Monospace)
+        code_font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
         editor.setFont(code_font)
         self._size_code_preview(editor)
         editor.hide()
         layout.addWidget(editor)
 
         def toggle_code(expanded):
-            review.setArrowType(QtCore.Qt.DownArrow if expanded else QtCore.Qt.RightArrow)
+            review.setArrowType(QtCore.Qt.ArrowType.DownArrow if expanded else QtCore.Qt.ArrowType.RightArrow)
             editor.setVisible(expanded)
             copy.setVisible(expanded)
 
@@ -1612,7 +1614,7 @@ class Ui_DockWidget:
 
     def _apply_style(self, font_family, points):
         palette = self.dockWidgetContents.palette()
-        dark = palette.color(QtGui.QPalette.Window).lightness() < 128
+        dark = palette.color(QtGui.QPalette.ColorRole.Window).lightness() < 128
         if dark:
             background, surface, inset = "#1d2523", "#26312e", "#202b27"
             text, muted, border = "#edf4f0", "#adbfb6", "#3a4a43"
@@ -1659,8 +1661,8 @@ class Ui_DockWidget:
         for area, color in ((self.chatScrollArea, background), (self.layer_scroll, surface)):
             viewport = area.viewport()
             viewport_palette = viewport.palette()
-            viewport_palette.setColor(QtGui.QPalette.Window, QtGui.QColor(color))
-            viewport_palette.setColor(QtGui.QPalette.Base, QtGui.QColor(color))
+            viewport_palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(color))
+            viewport_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(color))
             viewport.setPalette(viewport_palette)
             viewport.setAutoFillBackground(True)
         self.dockWidgetContents.setStyleSheet(f"""
