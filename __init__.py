@@ -4,6 +4,8 @@ import subprocess
 import platform
 import glob
 import shutil
+import shlex
+import tempfile
 from pathlib import Path
 from PyQt5.QtWidgets import QMessageBox, QApplication, QProgressDialog
 from qgis.PyQt.QtCore import QTimer, Qt, QProcess, QCoreApplication
@@ -106,51 +108,37 @@ def install_requirements_direct_macos(requirements_path):
     # Method 1: Direct pip import
     try:
         import pip
-        pip.main(['install', '--user', '-r', requirements_path])
-        return True
+        if pip.main(['install', '--user', '-r', requirements_path]) == 0:
+            return True
     except:
         pass
     
     # Method 2: Use pip._internal
     try:
         from pip._internal import main as pip_main
-        pip_main(['install', '--user', '-r', requirements_path])
-        return True
+        if pip_main(['install', '--user', '-r', requirements_path]) == 0:
+            return True
     except:
         pass
     
-    # Method 3: Install packages individually using subprocess
+    # Method 3: Run pip directly with a requirements file.
     try:
-        with open(requirements_path, 'r') as f:
-            packages = [line.strip() for line in f if line.strip() and not line.startswith('#')]
-        
-        failed_packages = []
-        for package in packages:
-            try:
-                # Execute directly using exec
-                cmd = f"""
-import subprocess
-result = subprocess.run(['{sys.executable}', '-m', 'pip', 'install', '--user', '{package}'], capture_output=True)
-"""
-                exec(cmd)
-            except:
-                failed_packages.append(package)
-        
-        if not failed_packages:
-            return True
-            
-    except Exception as e:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--user", "-r", requirements_path],
+            capture_output=True,
+            check=True,
+            timeout=300,
+        )
+        return True
+    except (OSError, subprocess.SubprocessError) as e:
         print(f"[QueryGIS] Direct installation error: {e}")
     
     return False
 
-def create_installation_script_macos(plugin_dir, requirements_path):
+def create_installation_script_macos(requirements_path):
     """Create installation script for macOS"""
     paths = find_qgis_python_macos()
     python_path = paths['python'] or sys.executable
-    
-    # .command script (double-clickable)
-    script_path = os.path.join(plugin_dir, "install_packages.command")
     
     script_content = f"""#!/bin/bash
 # QGIS Plugin Package Installation Script
@@ -161,14 +149,14 @@ echo "========================================="
 echo ""
 
 # Python path
-PYTHON="{python_path}"
+PYTHON={shlex.quote(python_path)}
 
 echo "Using Python: $PYTHON"
 echo "Installing packages..."
 echo ""
 
 # Install packages
-$PYTHON -m pip install --user -r "{requirements_path}"
+"$PYTHON" -m pip install --user -r {shlex.quote(requirements_path)}
 
 if [ $? -eq 0 ]; then
     echo ""
@@ -189,10 +177,11 @@ echo "Press Enter to close..."
 read
 """
     
-    with open(script_path, 'w') as f:
+    script_fd, script_path = tempfile.mkstemp(prefix="querygis-install-", suffix=".command")
+    with os.fdopen(script_fd, "w", encoding="utf-8") as f:
         f.write(script_content)
-    
-    os.chmod(script_path, 0o755)
+
+    os.chmod(script_path, 0o700)
     
     return script_path
 
@@ -254,11 +243,8 @@ def install_requirements_cross_platform():
             prompt_restart()
             return True
         
-        # Step 2: Create installation script
-        script_path = create_installation_script_macos(plugin_dir, requirements_path)
         progress.close()
-        
-        # Step 3: Provide user options
+
         msg = QMessageBox()
         msg.setWindowTitle("Manual Installation Required")
         msg.setText(f"Automatic installation could not complete.\n"
@@ -290,6 +276,7 @@ def install_requirements_cross_platform():
             
         elif clicked == script_btn:
             # Run installation script
+            script_path = create_installation_script_macos(requirements_path)
             subprocess.run(['open', script_path])
             
         elif clicked == manual_btn:

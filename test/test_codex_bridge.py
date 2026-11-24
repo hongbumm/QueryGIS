@@ -41,7 +41,7 @@ class CodexBridgeTest(unittest.TestCase):
                 bridge.set_snapshot({"querygis_ready": True})
                 self.assertTrue(request(codex=False)["querygis_ready"])
                 with self.assertRaises(HTTPError) as unauthorized:
-                    request(token="invalid")
+                    request(token=details["token"] + ".invalid")
                 self.assertEqual(unauthorized.exception.code, 403)
                 unauthorized.exception.close()
                 self.assertFalse(bridge.codex_connected)

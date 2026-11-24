@@ -6,12 +6,13 @@
 name=QueryGIS
 qgisMinimumVersion=3.28
 qgisMaximumVersion=3.44
-description=Contorl QGIS with LLM, Make it Easier!
-version=1.9.16
+description=Control QGIS with natural-language commands.
+version=1.9.17
 author=3DLabs, Juseong Lee
 email=juseonglee99@3dlabs.co.kr
 
-about=QueryGIS - Control QGIS with simple commands! Chat with LLM
+about=QueryGIS lets you describe GIS tasks in plain language and run them in QGIS.
+    Sign up for free and try QueryGIS with free credits.
 
 tracker=https://github.com/hongbumm/QueryGIS/issues
 repository=https://github.com/hongbumm/QueryGIS
@@ -27,7 +28,7 @@ hasProcessingProvider=no
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=https://www.3dlabs.co.kr/kor/main/main.html?
+homepage=https://www.3dlabs-querygis.co.kr/
 category=Plugins
 icon=icon.png
 # experimental flag

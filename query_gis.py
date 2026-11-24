@@ -54,7 +54,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.9.16"
+CURRENT_VERSION = "1.9.17"
 RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
 BACKEND_BASE_URL = "https://querygis.com"
 CHAT_ENDPOINT = f"{BACKEND_BASE_URL}/chat"

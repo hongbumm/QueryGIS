@@ -2,6 +2,9 @@
 .vscode/
 output
 
+# Release archives
+/releases/
+
 # Python bytecode
 __pycache__/
 *.pyc
