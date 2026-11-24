@@ -7,7 +7,7 @@ name=QueryGIS
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Control QGIS with natural-language commands.
-version=1.9.18
+version=1.9.19
 author=3DLabs, Juseong Lee
 email=juseonglee99@3dlabs.co.kr
 
