@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 ENABLE_REMOTE_LOG = True
-CURRENT_VERSION = "1.9.19"
+CURRENT_VERSION = "1.9.20"
 RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
 MAX_EARLIER_REQUESTS = 4
 CONVERSATION_EXCERPT_LENGTH = 80
