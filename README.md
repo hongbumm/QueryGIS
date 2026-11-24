@@ -1,80 +1,60 @@
-﻿한국어 | [영문](README_eng.md)
+<p align="center">
+  <img src="./assets/querygis_logo.png" width="112" alt="QueryGIS 로고">
+</p>
 
-# QueryGIS
+<h1 align="center">QueryGIS</h1>
 
-**채팅만으로 QGIS 워크플로우를 재정의 해보세요.**
+<p align="center">
+  <strong>QGIS에서 자연어로 시작하는 공간 분석</strong><br>
+  채팅으로 분석을 요청하고, 결과를 지도와 차트로 확인하세요.
+</p>
 
-QueryGIS는 QGIS를 위한 AI 인터페이스로, GIS 분석가, 연구자, 원격탐사 실무자, 기관/조직이 의도(intent)에서 실행(execution)까지 더 자연스럽고 효율적으로 이동하도록 돕습니다.
+<p align="center"><strong>2026년 4분기 중 출시 확정</strong></p>
 
-## 제품 개요
+<p align="center">
+  <strong><a href="https://www.3dlabs-querygis.co.kr/">회원가입 및 구독</a></strong>
+  · <a href="#설치">설치</a>
+  · <a href="#데모">데모</a>
+  · <a href="README_eng.md">English</a>
+</p>
 
-QueryGIS는 사용자가 QGIS와 자연어로 상호작용하고, 실행 가능한 GIS 단계를 생성하며, 반복적인 시행착오 스크립팅 없이 공간 분석을 가속화하도록 지원합니다.
+![QGIS에서 실행 중인 QueryGIS 패널](./assets/QueryGIS%20사진%20캡처.png)
 
-- 공식 출시 목표: **2026년 2분기 (2026년 6월 30일까지)**
-- 얼리 베타 참여 문의: `juseonglee99@3dlabs.co.kr`
+## 주요 기능
 
-![QueryGIS 인터페이스](./assets/QueryGIS%20사진%20캡처.png)
-
-## QueryGIS가 하는 일
-
-QueryGIS는 메뉴 탐색, 단편적인 문서 검색, 취약한 스크립트 반복에 의존하던 흐름을 줄이고, 자연어 기반으로 더 직관적인 QGIS 작업 방식을 제공합니다.
-
-- **자연어 상호작용**  
-  평문으로 작업을 설명해 GIS 워크플로우 진입 장벽을 낮춥니다.
-- **실행 가능한 GIS 가이드**  
-  모호한 아이디어를 분석/시각화/데이터 처리 단계로 구체화합니다.
-- **더 빠른 QGIS 워크플로우**  
-  반복 작업을 줄이고 의도에서 실행까지의 시간을 단축합니다.
-
-### 활용 예시 워크플로우
-
-![부동산 분석 예시](./assets/부동산%20분석%20예시.png)
-![산불 피해 분석 예시](./assets/산불%20피해%20예시.png)
-
-## WHY?
-
-QGIS는 강력하지만, 많은 작업이 여전히 높은 학습 비용, 반복적인 스크립팅, 과도한 도구/문서 탐색을 요구합니다. QueryGIS는 이 장벽을 낮춰 더 접근 가능하고 반복 가능한 지리공간 작업 환경을 제공합니다.
-
-## 수상 및 성과
-
-QueryGIS는 2025 AI Champion 대회에서 총 630개 참가팀 중 Top 20에 진출했으며, 한국정보통신기술협회상(TTA Award)을 수상했습니다.
-
-이 성과는 QueryGIS의 기술적 완성도와 실무 적용 가능성을 함께 보여줍니다.
-
-- **630개** 참가팀
-- **Top 20** 결선 진출
-- **TTA Award** 공식 수상
-
-![수상 사진](./assets/IMG_4917.JPG)
+| 작업 | QueryGIS에서 할 수 있는 일 |
+| --- | --- |
+| **자연어 분석 요청** | 원하는 작업을 설명하고 실행 가능한 QGIS 작업 단계로 구체화합니다. |
+| **공간 분석** | 버퍼 생성, 레이어 중첩, 피처 선택 등 반복되는 공간 분석을 수행합니다. |
+| **래스터·원격탐사** | 래스터 전처리와 여러 단계의 래스터 연산을 실행합니다. |
+| **지도·차트 시각화** | 지도와 레이어 스타일을 조정하고 분석 결과를 차트로 살펴봅니다. |
 
 ## 데모
 
-- YouTube: https://www.youtube.com/watch?v=yjNUj8UkJz0
+[YouTube에서 QueryGIS 데모 보기](https://www.youtube.com/watch?v=yjNUj8UkJz0)
 
-## 실제 GIS 업무를 위한 기능
-
-- **공간 분석**: 버퍼, 오버레이, 선택 기반 분석, 고밀도 분석 업무
-- **래스터 및 원격탐사**: 다단계 래스터 처리 및 전처리
-- **시각화 및 스타일링**: 지도 표현, 레이어 스타일링, 카토그래피 품질 향상
-- **워크플로우 가속화**: 반복 클릭/수작업 감소, 일상 업무 속도 향상
-
-## 교육 및 컨설팅
-
-각종 공간정보 관련 기관/대학교 대상 AI 기반 GIS 입문 및 활용 교육을 운영하고 있으며, 조직의 AI 전환을 위한 컨설팅을 함께 진행합니다.
-
-- GIS + AI 기초 교육
-- 기관 맞춤형 워크숍
-- AI 전환 컨설팅
+| 부동산 분석 | 산불 피해 분석 |
+| --- | --- |
+| ![부동산 분석 결과 지도](./assets/부동산%20분석%20예시.png) | ![산불 피해 분석 결과 지도](./assets/산불%20피해%20예시.png) |
 
 ## 설치
 
-플러그인 사용을 위해 제공되는 `.zip` 파일을 내려받아 설치합니다.
+1. [GitHub Releases](https://github.com/hongbumm/QueryGIS/releases)의 **Assets**에서 QueryGIS 플러그인 ZIP을 내려받습니다.
+2. QGIS에서 **플러그인 → 플러그인 관리 및 설치 → ZIP 파일에서 설치**를 열고 ZIP을 선택합니다.
+3. 설치 후 툴바의 QueryGIS 아이콘을 눌러 패널을 엽니다.
 
-1. `플러그인 > 플러그인 관리 및 설치 > ZIP 파일에서 설치`
-2. 설치 후 툴바 아이콘으로 패널 실행
+## 수상 및 성과
 
-## 문의
+**2025 AI Champion** 대회에서 630개 참가팀 중 **Top 20**에 진출하고 **한국정보통신기술협회상(TTA Award)**을 수상했습니다. [수상 사진 보기](./assets/IMG_4917.JPG)
 
-- 베타 / 교육 / 컨설팅 문의: `juseonglee99@3dlabs.co.kr`
-- GitHub: https://github.com/hongbumm/QueryGIS
-- 3DLabs: https://www.3dlabs.co.kr/kor/main/main.html
+## 교육 및 컨설팅
+
+공간정보 기관과 대학을 대상으로 GIS·AI 기초 교육, 기관 맞춤형 워크숍, AI 전환 컨설팅을 진행합니다.
+
+- 교육·컨설팅 문의는 [이메일](mailto:juseonglee99@3dlabs.co.kr)로 보내주세요.
+- 버그 제보와 기능 제안은 [GitHub Issues](https://github.com/hongbumm/QueryGIS/issues)에 남겨주세요.
+- [3DLabs 홈페이지](https://www.3dlabs.co.kr/kor/main/main.html)
+
+## 라이선스
+
+이 저장소의 QueryGIS 클라이언트 플러그인은 **GPL-2.0-or-later**로 배포됩니다. [라이선스 전문](LICENSE)

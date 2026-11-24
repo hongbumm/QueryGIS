@@ -1,82 +1,60 @@
-﻿[한국어](README.md) | English
+<p align="center">
+  <img src="./assets/querygis_logo.png" width="112" alt="QueryGIS logo">
+</p>
 
-# QueryGIS
+<h1 align="center">QueryGIS</h1>
 
-**Turn Natural Language into Real QGIS Workflows**
+<p align="center">
+  <strong>Spatial analysis in QGIS, in plain language</strong><br>
+  Ask for an analysis in chat and explore the results on maps and charts.
+</p>
 
-QueryGIS is an AI-powered interface for QGIS that helps GIS analysts, researchers, remote sensing practitioners, and organizations move from intent to execution more naturally and efficiently.
+<p align="center"><strong>Launch confirmed for Q4 2026</strong></p>
 
+<p align="center">
+  <strong><a href="https://www.3dlabs-querygis.co.kr/">Sign up and subscribe</a></strong>
+  · <a href="#installation">Installation</a>
+  · <a href="#demo">Demo</a>
+  · <a href="README.md">한국어</a>
+</p>
 
-## Product Snapshot
+![QueryGIS panel running in QGIS](./assets/QueryGIS%20사진%20캡처.png)
 
-QueryGIS helps users interact with QGIS in plain language, generate actionable GIS steps, and accelerate spatial analysis without constant trial-and-error scripting.
+## Features
 
-- Official launch target: **Q2 2026 (by June 30, 2026)**
-- Early beta participation: `juseonglee99@3dlabs.co.kr`
-
-![QueryGIS Interface](./assets/QueryGIS%20사진%20캡처.png)
-
-
-## What QueryGIS Does
-
-QueryGIS introduces a more intuitive way to work with QGIS by letting users describe tasks in natural language instead of relying only on menu hunting, fragmented documentation, or fragile scripts.
-
-- **Natural Language Interaction**  
-  Describe your task in plain language and reduce friction.
-- **Actionable GIS Guidance**  
-  Turn vague ideas into concrete steps for analysis, visualization, and data handling.
-- **Faster QGIS Workflows**  
-  Cut repetitive effort and move from intent to execution more efficiently.
-
-### Example Workflows
-
-![Real estate analysis example](./assets/부동산%20분석%20예시.png)
-![Wildfire damage analysis example](./assets/산불%20피해%20예시.png)
-
-## Why It Matters
-
-QGIS is powerful, but many workflows still require steep learning curves, repeated scripting effort, and too much searching through tools and documentation. QueryGIS lowers that barrier and supports more accessible, iterative, and efficient geospatial work.
-
-## Award & Recognition
-
-QueryGIS was recognized in the 2025 AI Champion competition, advancing into the Top 20 among 630 participating teams and receiving the Korea Information and Communication Technology Association Award (TTA Award).
-
-This recognition reflects both the technical ambition of QueryGIS and its practical potential as an AI-driven interface for real geospatial work.
-
-- **630** Participating Teams
-- **Top 20** Finalist Ranking
-- **TTA Award** Official Recognition
-
-![Award](./assets/IMG_4917.JPG)
+| Task | What you can do with QueryGIS |
+| --- | --- |
+| **Natural-language requests** | Describe a task and turn it into steps you can run in QGIS. |
+| **Spatial analysis** | Create buffers, overlay layers, select features, and handle recurring analysis tasks. |
+| **Raster and remote sensing** | Preprocess raster data and run multi-step raster operations. |
+| **Maps and charts** | Style maps and layers and explore analysis results in charts. |
 
 ## Demo
 
-- YouTube: https://www.youtube.com/watch?v=yjNUj8UkJz0
+[Watch the QueryGIS demo on YouTube](https://www.youtube.com/watch?v=yjNUj8UkJz0)
 
-## Built for Real Geospatial Tasks
-
-- **Spatial Analysis**: buffering, overlays, selection workflows, and analysis-heavy tasks
-- **Raster & Remote Sensing**: multi-step raster operations and preprocessing workflows
-- **Visualization & Styling**: map quality, layer styling, and cartographic presentation
-- **Workflow Acceleration**: reducing repetitive clicks and speeding up day-to-day GIS work
-
-## Education & Consulting
-
-We provide AI-enabled GIS training for spatial information institutions and universities, and we also support AI transition consulting for geospatial teams.
-
-- GIS + AI Foundation Training
-- Institutional Workshops
-- AI Transition Consulting
+| Real estate analysis | Wildfire damage assessment |
+| --- | --- |
+| ![Map showing real estate analysis results](./assets/부동산%20분석%20예시.png) | ![Map showing wildfire damage assessment results](./assets/산불%20피해%20예시.png) |
 
 ## Installation
 
-Install the plugin from the provided `.zip` package.
+1. Download the QueryGIS plugin ZIP from **Assets** on [GitHub Releases](https://github.com/hongbumm/QueryGIS/releases).
+2. In QGIS, open **Plugins → Manage and Install Plugins → Install from ZIP** and select the ZIP.
+3. Click the QueryGIS toolbar icon to open the panel.
 
-1. `Plugins > Manage and Install Plugins > Install from ZIP`
-2. Open the plugin panel from the toolbar icon after installation
+## Recognition
 
-## Contact
+QueryGIS advanced to the **Top 20** out of 630 teams at **2025 AI Champion** and received the **Telecommunications Technology Association (TTA) Award**. [View award photo](./assets/IMG_4917.JPG)
 
-- Beta / Training / Consulting: `juseonglee99@3dlabs.co.kr`
-- GitHub: https://github.com/hongbumm/QueryGIS
-- 3DLabs: https://www.3dlabs.co.kr/kor/main/main.html
+## Training and consulting
+
+We offer introductory GIS and AI training, tailored workshops, and AI adoption consulting for geospatial organizations and universities.
+
+- For training or consulting, [email us](mailto:juseonglee99@3dlabs.co.kr).
+- Report bugs or request features on [GitHub Issues](https://github.com/hongbumm/QueryGIS/issues).
+- [3DLabs website](https://www.3dlabs.co.kr/kor/main/main.html)
+
+## License
+
+The QueryGIS client plugin in this repository is distributed under **GPL-2.0-or-later**. [Read the license](LICENSE)
