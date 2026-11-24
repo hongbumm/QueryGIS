@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 ENABLE_REMOTE_LOG = True
 CURRENT_VERSION = "1.9.19"
 RESULT_CAPABILITIES = {"result_cards": True, "line_charts": True, "distribution_charts": True}
+MAX_EARLIER_REQUESTS = 4
+CONVERSATION_EXCERPT_LENGTH = 80
 
 
 def _backend_base_url():
@@ -67,9 +69,11 @@ def _runtime_metadata():
     }
 
 
-def _conversation_excerpt(text, limit):
+def _conversation_excerpt(text):
     compact = " ".join(text.split())
-    return compact if len(compact) <= limit else compact[:limit - 1].rstrip() + "…"
+    if len(compact) <= CONVERSATION_EXCERPT_LENGTH:
+        return compact
+    return compact[:CONVERSATION_EXCERPT_LENGTH - 1].rstrip() + "…"
 
 
 def _layer_kind(layer):
@@ -718,9 +722,7 @@ class QueryGIS(QObject):
         self.actions = []
         self.dockwidget = None
         self.chat_history = []
-        self._previous_turn = None
-        self._request_previous_turn = None
-        self._request_remembers_turn = False
+        self._clear_conversation()
 
         self.success_status_color = "#dcefe5"
         self.error_status_color = "#a72f36"
@@ -1253,16 +1255,28 @@ Message: {str(e)}
         return list(field_samples.values())
 
     def _clear_conversation(self):
-        self._previous_turn = None
-        self._request_previous_turn = None
+        self._recent_requests = []
+        self._latest_request_result = ""
+        self._request_conversation = {}
         self._request_remembers_turn = False
 
-    def _remember_turn(self, result):
+    def _record_conversation_request(self, user_input):
+        if self._recent_requests:
+            previous_turn = {"user": self._recent_requests[-1]}
+            if self._latest_request_result:
+                previous_turn["result"] = self._latest_request_result
+            self._request_conversation["previous_turn"] = previous_turn
+            if len(self._recent_requests) > 1:
+                self._request_conversation["earlier_requests"] = self._recent_requests[:-1]
+        self._recent_requests = [
+            *self._recent_requests[-MAX_EARLIER_REQUESTS:],
+            _conversation_excerpt(user_input),
+        ]
+        self._latest_request_result = ""
+
+    def _remember_request_result(self, result):
         if self._request_remembers_turn:
-            self._previous_turn = {
-                "user": _conversation_excerpt(self._request_user_input, 120),
-                "result": _conversation_excerpt(result, 80),
-            }
+            self._latest_request_result = _conversation_excerpt(result)
 
     def append_chat_message(self, role, message):
         if not self.ui:
@@ -1485,7 +1499,7 @@ Message: {str(e)}
             self.append_chat_message("assistant-print", display_text.strip())
 
         if completed and chosen is None:
-            self._remember_turn(display_text)
+            self._remember_request_result(display_text)
         if completed and show_lite_notice:
             self._maybe_show_lite_plan_notice()
         self._codex_connection.finish(completed, executed=executed,
@@ -1870,7 +1884,7 @@ Message: {str(e)}
             self.stop_wave_progress("Task Complete")
             self._add_execution_result_to_chat(True, elapsed)
             result_title = result_cards[0].title if result_cards else ""
-            self._remember_turn(result_title or final_output or "Execution completed.")
+            self._remember_request_result(result_title or final_output or "Execution completed.")
             return True
         
         except QueryRequestDenied:
@@ -2681,15 +2695,13 @@ Message: {str(e)}
         QSettings().setValue("QueryGIS/font_size", size)
 
     def _request_payload_metadata(self):
-        payload = {
+        return {
             "api_key": self._request_api_key,
             **RESULT_CAPABILITIES,
+            **self._request_conversation,
             "runtime": _runtime_metadata(),
             "run_id": self._current_run_id,
         }
-        if self._request_previous_turn:
-            payload["previous_turn"] = self._request_previous_turn
-        return payload
 
     def _request_auth_headers(self):
         if self._request_id_token:
@@ -2956,7 +2968,9 @@ Message: {str(e)}
 
         self._current_run_id = uuid.uuid4().hex[:12]
         self._request_remembers_turn = not from_codex
-        self._request_previous_turn = self._previous_turn if self._request_remembers_turn else None
+        self._request_conversation = {}
+        if self._request_remembers_turn:
+            self._record_conversation_request(user_input)
 
         self.append_chat_message("user", user_input)
         if not from_codex:
