@@ -67,6 +67,11 @@ def _runtime_metadata():
     }
 
 
+def _conversation_excerpt(text, limit):
+    compact = " ".join(text.split())
+    return compact if len(compact) <= limit else compact[:limit - 1].rstrip() + "…"
+
+
 def _layer_kind(layer):
     if isinstance(layer, QgsVectorLayer):
         return "vector"
@@ -713,6 +718,9 @@ class QueryGIS(QObject):
         self.actions = []
         self.dockwidget = None
         self.chat_history = []
+        self._previous_turn = None
+        self._request_previous_turn = None
+        self._request_remembers_turn = False
 
         self.success_status_color = "#dcefe5"
         self.error_status_color = "#a72f36"
@@ -952,10 +960,7 @@ Message: {str(e)}
             thinking_strategy = "LOW" if retry_count == 0 else "HIGH"
             
             payload = {
-                **self._request_credentials(),
-                **RESULT_CAPABILITIES,
-                "runtime": _runtime_metadata(),
-                "run_id": self._current_run_id,
+                **self._request_payload_metadata(),
                 "context": context_for_fix,
                 "user_input": user_input,
                 "broken_code": broken_code_for_fix,
@@ -1128,6 +1133,7 @@ Message: {str(e)}
         return action
 
     def initGui(self):
+        QgsProject.instance().cleared.connect(self._clear_conversation)
         icon_path = ':/plugins/query_gis/icon.png'
         self.add_action(
             icon_path,
@@ -1137,6 +1143,7 @@ Message: {str(e)}
         )
 
     def unload(self):
+        QgsProject.instance().cleared.disconnect(self._clear_conversation)
         self._stop_codex_connection()
         self._cancel_subscription_usage()
         if self.auth_worker and self.auth_worker.isRunning():
@@ -1244,6 +1251,18 @@ Message: {str(e)}
             field_samples[field_name]["samples"] = list(field_samples[field_name]["samples"])
         
         return list(field_samples.values())
+
+    def _clear_conversation(self):
+        self._previous_turn = None
+        self._request_previous_turn = None
+        self._request_remembers_turn = False
+
+    def _remember_turn(self, result):
+        if self._request_remembers_turn:
+            self._previous_turn = {
+                "user": _conversation_excerpt(self._request_user_input, 120),
+                "result": _conversation_excerpt(result, 80),
+            }
 
     def append_chat_message(self, role, message):
         if not self.ui:
@@ -1465,6 +1484,8 @@ Message: {str(e)}
                     return
             self.append_chat_message("assistant-print", display_text.strip())
 
+        if completed and chosen is None:
+            self._remember_turn(display_text)
         if completed and show_lite_notice:
             self._maybe_show_lite_plan_notice()
         self._codex_connection.finish(completed, executed=executed,
@@ -1538,10 +1559,7 @@ Message: {str(e)}
 
     def _build_backend_payload(self, mode, context_text="", tool_info="", error_message="", tool_request=None, tool_data=None):
         payload = {
-            **self._request_credentials(),
-            **RESULT_CAPABILITIES,
-            "runtime": _runtime_metadata(),
-            "run_id": self._current_run_id,
+            **self._request_payload_metadata(),
             "context": context_text or "",
             "user_input": self._request_user_input,
             "model": self._request_model,
@@ -1637,10 +1655,7 @@ Message: {str(e)}
     def _call_syntax_fixer(self, broken_code, error_message, user_input, context):
         """Syntax Error 전용 Fix 서버 호출"""
         payload = {
-            **self._request_credentials(),
-            **RESULT_CAPABILITIES,
-            "runtime": _runtime_metadata(),
-            "run_id": self._current_run_id,
+            **self._request_payload_metadata(),
             "context": context,
             "user_input": user_input,
             "broken_code": broken_code[:2000],  # 길이 제한
@@ -1846,13 +1861,16 @@ Message: {str(e)}
                 query_gis_instance=self
             )
             
-            for result in scope["_querygis_result_cards"]:
+            result_cards = scope["_querygis_result_cards"]
+            for result in result_cards:
                 self.append_chat_message("assistant-result", result)
             if final_output:
                 self.append_chat_message("assistant-print", f"Output:\n{final_output}")
             
             self.stop_wave_progress("Task Complete")
             self._add_execution_result_to_chat(True, elapsed)
+            result_title = result_cards[0].title if result_cards else ""
+            self._remember_turn(result_title or final_output or "Execution completed.")
             return True
         
         except QueryRequestDenied:
@@ -2649,6 +2667,8 @@ Message: {str(e)}
 
     def _save_settings_key(self, field):
         api_key = field.text().strip()
+        if api_key != self.load_api_key():
+            self._clear_conversation()
         self.save_api_key(api_key)
         self.ui.set_api_key(api_key)
         if api_key:
@@ -2660,8 +2680,16 @@ Message: {str(e)}
         self.ui.set_font_size(size)
         QSettings().setValue("QueryGIS/font_size", size)
 
-    def _request_credentials(self):
-        return {"api_key": self._request_api_key}
+    def _request_payload_metadata(self):
+        payload = {
+            "api_key": self._request_api_key,
+            **RESULT_CAPABILITIES,
+            "runtime": _runtime_metadata(),
+            "run_id": self._current_run_id,
+        }
+        if self._request_previous_turn:
+            payload["previous_turn"] = self._request_previous_turn
+        return payload
 
     def _request_auth_headers(self):
         if self._request_id_token:
@@ -2737,6 +2765,7 @@ Message: {str(e)}
         self.set_user_auth(profile["sub"], profile.get("email"), profile.get("name"), profile["id_token"])
 
     def handle_logout(self):
+        self._clear_conversation()
         self._codex_plan_verified = False
         self._stop_codex_connection()
         self._cancel_subscription_usage()
@@ -2752,6 +2781,8 @@ Message: {str(e)}
             self.ui.status_label.setText(self.tr("Signed out"))
 
     def set_user_auth(self, sub, email, name, id_token):
+        if sub != self.user_oauth_sub:
+            self._clear_conversation()
         self._codex_plan_verified = False
         self._stop_codex_connection()
         self._cancel_subscription_usage()
@@ -2924,6 +2955,8 @@ Message: {str(e)}
         self.start_wave_progress("Processing query")
 
         self._current_run_id = uuid.uuid4().hex[:12]
+        self._request_remembers_turn = not from_codex
+        self._request_previous_turn = self._previous_turn if self._request_remembers_turn else None
 
         self.append_chat_message("user", user_input)
         if not from_codex:
